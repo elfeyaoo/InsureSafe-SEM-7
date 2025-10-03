@@ -1,0 +1,124 @@
+{% extends "base.html" %}
+{% block content %}
+<h4 class="mb-3">👤 My Profile</h4>
+
+<div class="row g-3">
+  <!-- User Info -->
+  <div class="col-lg-4">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-body text-center">
+        <img id="profilePhoto" 
+             src="{{ url_for('uploaded_file', filename=user.id_photo_path) }}" 
+             class="rounded-circle mb-3" width="120" height="120" 
+             style="object-fit:cover">
+        <h6 class="fw-bold" id="profileName">{{ user.name }}</h6>
+        <p class="text-muted small mb-1" id="profileEmail">{{ user.email }}</p>
+        <p class="text-muted small mb-1" id="profilePhone">{{ user.phone or '' }}</p>
+        <p class="text-muted small mb-1" id="profileAddress">{{ user.address or '' }}</p>
+        <span class="badge {{ 'bg-success' if user.is_active else 'bg-secondary' }}">
+          {{ 'Active' if user.is_active else 'Inactive' }}
+        </span>
+        {% if user.is_admin %}
+          <span class="badge bg-danger">Admin</span>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <!-- User Policies -->
+  <div class="col-lg-8">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-body">
+        <h6 class="mb-3">📄 My Policies</h6>
+        {% if policies %}
+        <div class="table-responsive">
+          <table class="table table-sm align-middle">
+            <thead class="table-light">
+              <tr><th>Policy</th><th>Status</th><th>Applied At</th></tr>
+            </thead>
+            <tbody>
+              {% for p in policies %}
+              <tr>
+                <td>{{ p.policy.name }}</td>
+                <td>
+                  <span class="badge {{ 'bg-success' if p.status=='Approved' else 'bg-warning text-dark' }}">
+                    {{ p.status }}
+                  </span>
+                  {% if p.doc_valid %}
+                    <span class="badge bg-info">Verified</span>
+                  {% endif %}
+                </td>
+                <td>{{ p.applied_at | datetimeformat }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% else %}
+          <p>No policies applied yet.</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Edit Profile Form -->
+<div class="row g-3 mt-3">
+  <div class="col-12">
+    <div class="card border-0 shadow-sm">
+      <div class="card-body">
+        <h6 class="mb-3">✏️ Edit Profile</h6>
+        <form id="editProfileForm" enctype="multipart/form-data">
+          <div class="mb-2">
+            <label class="form-label">Name</label>
+            <input type="text" name="name" class="form-control" value="{{ user.name }}" required>
+          </div>
+          <div class="mb-2">
+            <label class="form-label">Email</label>
+            <input type="email" name="email" class="form-control" value="{{ user.email }}" required>
+          </div>
+          <div class="mb-2">
+            <label class="form-label">Phone</label>
+            <input type="text" name="phone" class="form-control" value="{{ user.phone or '' }}">
+          </div>
+          <div class="mb-2">
+            <label class="form-label">Address</label>
+            <textarea name="address" class="form-control">{{ user.address or '' }}</textarea>
+          </div>
+          <div class="mb-2">
+            <label class="form-label">ID Photo</label>
+            <input type="file" name="id_photo" class="form-control">
+          </div>
+          <button type="submit" class="btn btn-primary mt-2">Update Profile</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+document.getElementById("editProfileForm").addEventListener("submit", async function(e){
+    e.preventDefault();
+    let form = e.target;
+    let data = new FormData(form);
+    let res = await fetch("{{ url_for('edit_profile') }}", {method:"POST", body:data});
+    let result = await res.json();
+
+    if(result.status === "success"){
+        alert(result.message);
+        document.getElementById("profileName").innerText = result.user.name;
+        document.getElementById("profileEmail").innerText = result.user.email;
+        document.getElementById("profilePhone").innerText = result.user.phone || '';
+        document.getElementById("profileAddress").innerText = result.user.address || '';
+
+        if(result.user.id_photo_path){
+            // Force reload the image to avoid caching issues
+            document.getElementById("profilePhoto").src = 
+                "{{ url_for('uploaded_file', filename='') }}" + result.user.id_photo_path + "?t=" + Date.now();
+        }
+    } else {
+        alert(result.message);
+    }
+});
+</script>
+{% endblock %}

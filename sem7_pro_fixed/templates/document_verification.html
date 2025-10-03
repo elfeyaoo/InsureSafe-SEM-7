@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="row g-4">
+  <div class="col-lg-5">
+    <div class="card shadow-sm border-0">
+      <div class="card-body">
+        <h5 class="card-title">Document Verification (OCR + Classification)</h5>
+        <form method="post" enctype="multipart/form-data">
+          <div class="mb-3">
+            <label class="form-label">Full Name (expected)</label>
+            <input type="text" name="name" class="form-control" required>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Date of Birth (expected)</label>
+            <input type="date" name="dob" class="form-control" required>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">ID Number (expected)</label>
+            <input type="text" name="id_number" class="form-control" required>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Upload Document Image</label>
+            <input type="file" name="document" class="form-control" accept="image/*,.pdf" required>
+          </div>
+          <button class="btn btn-primary w-100">Verify Document</button>
+        </form>
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-7">
+    <h5 class="mb-3">Result</h5>
+    {% if result %}
+      <div class="card border-0 shadow-sm">
+        <div class="card-body">
+          <div class="mb-2"><span class="badge bg-info text-dark">{{ result.document_type }}</span></div>
+          <pre class="small mb-3">{{ result.extracted | tojson(indent=2) }}</pre>
+          <div>
+            {% if result.is_valid %}
+              <span class="badge bg-success p-2">Validated</span>
+            {% else %}
+              <span class="badge bg-danger p-2">Mismatch</span>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+    {% else %}
+      <div class="text-muted">Provide expected details and upload a document image to verify.</div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="hero p-4 p-md-5 mb-4">
+  <div class="row align-items-center">
+    <div class="col-md-7">
+      <h1 class="display-6">Smart Insurance, simple choices.</h1>
+      <p class="lead">Compare policies, file claims, and verify documents — all in one modern portal built for trust.</p>
+      <a href="{{ url_for('get_started') }}" class="btn btn-primary btn-lg me-2">Get Started</a>
+      <a href="{{ url_for('dashboard') }}" class="btn btn-outline-secondary btn-lg">File a Claim</a>
+    </div>
+    <div class="col-md-5 text-center">
+      <img src="https://images.unsplash.com/photo-1541532713592-79a0317b6b77?q=80&w=600&auto=format&fit=crop&ixlib=rb-4.0.3&s=placeholder" alt="insurance" class="img-fluid rounded">
+    </div>
+  </div>
+</div>
+
+<div class="row g-4">
+  <div class="col-md-4">
+    <div class="card card-modern p-3">
+      <div class="card-body">
+        <h5>Quick Quotes</h5>
+        <p class="small muted">Get tailored policy suggestions in seconds.</p>
+        <div class="stat">3 plans</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="card card-modern p-3">
+      <div class="card-body">
+        <h5>Secure Verification</h5>
+        <p class="small muted">Upload documents safely and verify with face match.</p>
+        <div class="stat">2-step</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="card card-modern p-3">
+      <div class="card-body">
+        <h5>24/7 Support</h5>
+        <p class="small muted">Chat and email support for policyholders.</p>
+        <div class="stat">Always</div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

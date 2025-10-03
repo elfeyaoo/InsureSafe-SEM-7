@@ -1,0 +1,24 @@
+
+/* Custom styles for modern look */
+body { background: #f7f9fc; color: #333; }
+.navbar-brand { font-size: 1.25rem; }
+.hero { padding: 4rem 0; background: linear-gradient(180deg, #ffffff 0%, #f1f6ff 100%); border-radius: .5rem; box-shadow: 0 6px 20px rgba(20,40,100,0.04); }
+.card-modern { border: none; border-radius: 12px; box-shadow: 0 6px 30px rgba(20,40,80,0.06); }
+.btn-primary { background-image: linear-gradient(90deg,#3b82f6,#06b6d4); border: none; }
+.form-control:focus { box-shadow: none; border-color: #06b6d4; }
+.stat { font-weight:700; font-size:1.5rem; }
+small.muted { color:#6c757d; }
+
+
+/* Enhanced visuals */
+.bg-gradient {
+  background: linear-gradient(135deg, #f8fbff 0%, #eef5ff 100%);
+  min-height: 100vh;
+}
+.card.glass {
+  backdrop-filter: blur(6px);
+  background: rgba(255,255,255,0.6);
+}
+.card, .btn { border-radius: 1rem; }
+.btn-lg { border-radius: 1.2rem; }
+input.form-control:focus { box-shadow: 0 0 0 .2rem rgba(13,110,253,.25); }

@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-md-6">
+    <div class="card shadow-sm border-0">
+      <div class="card-body">
+        <h5 class="card-title mb-3">Face Verification</h5>
+        <p class="text-muted small">Upload a live selfie to verify your identity before logging in.</p>
+        <form method="post" enctype="multipart/form-data">
+          <div class="mb-3">
+            <input type="file" name="selfie" class="form-control" accept="image/*" required>
+          </div>
+          <button class="btn btn-primary w-100">Verify & Continue</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

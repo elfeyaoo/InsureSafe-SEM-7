@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="row g-4">
+  <div class="col-lg-5">
+    <div class="card shadow-sm border-0">
+      <div class="card-body">
+        <h5 class="card-title">AI-Assisted Claims Processing</h5>
+        <form method="post" enctype="multipart/form-data">
+          <div class="mb-3">
+            <label class="form-label">Claim Amount (₹)</label>
+            <input type="number" name="claim_amount" class="form-control" required>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Policy Sum Insured (₹)</label>
+            <input type="number" name="sum_insured" class="form-control" required>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Upload Claim Files (images/PDF)</label>
+            <input type="file" name="claim_files" class="form-control" multiple>
+          </div>
+          <button class="btn btn-primary w-100">Assess Claim</button>
+        </form>
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-7">
+    <h5 class="mb-3">Assessment</h5>
+    {% if report %}
+      <div class="card border-0 shadow-sm mb-3">
+        <div class="card-body">
+          <div class="d-flex justify-content-between align-items-center">
+            <div>
+              <div class="fw-bold">Decision: {{ report.decision }}</div>
+              <div class="text-muted">Fraud Risk: {{ (report.risk_score * 100)|round(1) }}%</div>
+            </div>
+            <span class="badge {% if report.decision == 'Auto-Approve' %}bg-success{% elif report.decision == 'Manual Review' %}bg-warning text-dark{% else %}bg-danger{% endif %} p-2">{{ report.decision }}</span>
+          </div>
+        </div>
+      </div>
+      <div class="card border-0 shadow-sm">
+        <div class="card-body">
+          <h6 class="mb-2">Signals</h6>
+          <pre class="small mb-0">{{ report.signals | tojson(indent=2) }}</pre>
+        </div>
+      </div>
+    {% else %}
+      <div class="text-muted">Enter details and upload files to get an assessment.</div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
