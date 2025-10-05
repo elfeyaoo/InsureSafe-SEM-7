@@ -32,7 +32,17 @@ def init_db():
     policies_col.create_index("name", unique=True)
     create_default_admin()
 
-def add_user(name, email, password, id_photo_path=None, phone=None, address=None, is_admin=False):
+def add_user(
+    name,
+    email,
+    password,
+    id_photo_path=None,
+    phone=None,
+    address=None,
+    age=None,
+    annual_income=None,
+    is_admin=False
+):
     pwd_hash, salt = hash_password(password)
     user = {
         "name": name,
@@ -42,6 +52,8 @@ def add_user(name, email, password, id_photo_path=None, phone=None, address=None
         "id_photo_path": id_photo_path,
         "phone": phone,
         "address": address,
+        "age": int(age) if age else None,
+        "annual_income": int(annual_income) if annual_income else None,
         "is_admin": is_admin,
         "is_active": True,
         "created_at": datetime.utcnow()

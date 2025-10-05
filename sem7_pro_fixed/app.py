@@ -97,6 +97,8 @@ def signup():
         id_photo = request.files.get("id_photo")
         phone = request.form.get("phone","").strip()
         address = request.form.get("address","").strip()
+        age = request.form.get("age")  # ✅ NEW
+        annual_income = request.form.get("annual_income")  # ✅ NEW
 
         if not (name and email and password and id_photo):
             flash("All fields including ID photo are required.", "warning")
@@ -111,15 +113,19 @@ def signup():
         os.makedirs(id_dir, exist_ok=True)
         filename = secure_filename(f"{int(time.time())}_{id_photo.filename}")
         id_photo.save(os.path.join(id_dir, filename))
-        idp_path = os.path.join("id_photos", filename)  # relative path for DB
+        idp_path = f"id_photos/{filename}" # relative path for DB
 
         try:
             add_user(
-                name, email, password,
+                name=name,
+                email=email,
+                password=password,
                 id_photo_path=idp_path,
-                is_admin=False,
                 phone=phone,
-                address=address
+                address=address,
+                age=int(age) if age else None,  # ✅ NEW
+                annual_income=float(annual_income) if annual_income else None,  # ✅ NEW
+                is_admin=False
             )
             flash("Signup successful. Please login.", "success")
             return redirect(url_for("login"))
@@ -265,36 +271,77 @@ def logout():
 @app.route("/policies")
 @login_required
 def policies():
-    user = get_user_by_id(session["user_id"])
+    uid = session["user_id"]
+    user = get_user_by_id(uid)
+    if not user:
+        flash("User not found.", "danger")
+        return redirect(url_for("logout"))
+
+    # User features with defaults
     age = user.get("age", 30)
-    salary = user.get("annual_income", 500000)
-    existing_policies = get_user_policies(session["user_id"])
+    annual_income = user.get("annual_income", 500_000)
 
-    # Compute existing premiums & count for recommendation
-    existing_ids = [p["policy_id"] for p in existing_policies]
-    existing_premiums = sum([p["premium_amount"] for p in policies_col.find({"_id": {"$in": [ObjectId(pid) for pid in existing_ids]}})])
-    existing_count = len(existing_ids)
+    # User's existing policies
+    existing_policies = get_user_policies(uid) or []
+    existing_policy_ids = [
+        str(p.get("policy_id")) for p in existing_policies if p.get("policy_id")
+    ]
 
+    # Compute total premium (optional)
+    total_premium = 0.0
+    if existing_policy_ids:
+        try:
+            object_ids = [ObjectId(pid) for pid in existing_policy_ids]
+            cursor = policies_col.find({"_id": {"$in": object_ids}})
+            total_premium = sum(float(p.get("premium_amount", 0)) for p in cursor)
+        except Exception:
+            total_premium = 0.0
+
+    # Get recommended policies
     recommended = recommend_policies(
         age=age,
-        annual_income=salary,
-        existing_premiums=existing_premiums,
-        existing_policy_count=existing_count
-    )
-    recommended_ids = [p["id"] for p in recommended]
+        annual_income=annual_income,
+        existing_premiums=total_premium,
+        existing_policy_count=len(existing_policy_ids)
+    ) or []
 
-    # Fetch all policies from DB
+    # Fetch all policies
     all_policies = list(policies_col.find())
+
+    # Map policy names to DB documents
+    name_to_doc = { (p.get("name") or "").strip().lower(): p for p in all_policies }
+
+    # Map recommender output to DB _id and score
+    recommended_ids = []
+    scores = {}
+    for r in recommended:
+        rec_name = (r.get("name") or "").strip().lower()
+        matched = name_to_doc.get(rec_name)
+        if matched:
+            pid = str(matched["_id"])
+            recommended_ids.append(pid)
+            scores[pid] = float(r.get("score", 0))
+
+    # Sort policies: Owned+Recommended > Recommended > Remaining
+    def sort_key(p):
+        pid = str(p["_id"])
+        if pid in existing_policy_ids and pid in recommended_ids:
+            return (0, -scores.get(pid, 0))
+        elif pid in recommended_ids:
+            return (1, -scores.get(pid, 0))
+        else:
+            return (2, 0)
+
+    all_policies.sort(key=sort_key)
 
     return render_template(
         "policies.html",
         policies=all_policies,
-        recommended_ids=recommended_ids
+        recommended_ids=recommended_ids,
+        scores=scores,
+        existing_policy_ids=existing_policy_ids
     )
 
-# ============================================================
-# APPLY POLICY
-# ============================================================
 # ============================================================
 # APPLY POLICY
 # ============================================================
@@ -430,6 +477,11 @@ def dashboard():
 def profile():
     uid = session["user_id"]
     user = get_user_by_id(uid)
+
+    # ✅ Fix backslashes in stored image paths
+    if user and user.get("id_photo_path"):
+        user["id_photo_path"] = user["id_photo_path"].replace("\\", "/")
+
     policies = get_user_policies(uid)
     return render_template("profile.html", user=user, policies=policies)
 
