@@ -1,0 +1,165 @@
+{% extends "base.html" %}
+{% block content %}
+
+<style>
+  #loader {
+    display: none;
+    text-align: center;
+    margin-top: 15px;
+  }
+  .spinner {
+    border: 4px solid #f3f3f3;
+    border-top: 4px solid #007bff;
+    border-radius: 50%;
+    width: 40px;
+    height: 40px;
+    animation: spin 1s linear infinite;
+    margin: auto;
+  }
+  @keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+  }
+</style>
+
+<script defer src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
+
+<div class="row justify-content-center">
+  <div class="col-md-6">
+    <div class="card shadow-sm border-0 mt-4">
+      <div class="card-body">
+        <h5 class="card-title mb-3">Face Verification</h5>
+        <p class="text-muted small">Align your face within the box and click capture.</p>
+
+        <!-- Live Camera View -->
+        <div id="cameraContainer">
+          <div id="cameraWrapper" style="position: relative;">
+            <video id="camera" autoplay playsinline width="100%" style="border-radius:10px;"></video>
+            <canvas id="faceOverlay" style="position:absolute; top:0; left:0;"></canvas>
+          </div>
+          <button id="captureBtn" class="btn btn-primary w-100 mt-3">📸 Capture Photo</button>
+        </div>
+
+        <!-- Preview After Capture -->
+        <div id="previewContainer" style="display:none;">
+          <img id="previewImage" src="" class="img-fluid rounded mb-3">
+          <div class="d-flex gap-2">
+            <button id="retakeBtn" class="btn btn-secondary w-50">🔄 Retake</button>
+            <button id="submitBtn" class="btn btn-success w-50">✅ Verify</button>
+          </div>
+        </div>
+
+        <!-- Loader -->
+        <div id="loader">
+          <div class="spinner"></div>
+          <p class="mt-2">Verifying face, please wait...</p>
+        </div>
+
+        <!-- Hidden Form -->
+        <form id="uploadForm" method="POST" style="display:none;">
+          <input type="hidden" name="captured_image" id="captured_image">
+        </form>
+
+        <canvas id="snapshot" style="display:none;"></canvas>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<script>
+  const video = document.getElementById("camera");
+  const overlay = document.getElementById("faceOverlay");
+  const canvas = document.getElementById("snapshot");
+  const previewImage = document.getElementById("previewImage");
+
+  const cameraContainer = document.getElementById("cameraContainer");
+  const previewContainer = document.getElementById("previewContainer");
+  const loader = document.getElementById("loader");
+
+  const captureBtn = document.getElementById("captureBtn");
+  const retakeBtn = document.getElementById("retakeBtn");
+  const submitBtn = document.getElementById("submitBtn");
+  const uploadForm = document.getElementById("uploadForm");
+  const inputImage = document.getElementById("captured_image");
+
+  async function loadModels() {
+    try {
+      await faceapi.nets.tinyFaceDetector.loadFromUri("/static/models/");
+    } catch (err) {
+      console.log("⚠️ model load error:", err);
+    }
+  }
+
+  async function startCamera() {
+    await loadModels();
+
+    navigator.mediaDevices.getUserMedia({ video: true })
+      .then(stream => {
+        video.srcObject = stream;
+
+        video.onloadedmetadata = () => {
+          video.play();
+          detectFace();
+        };
+      })
+      .catch(err => {
+        alert("Camera access denied or unavailable!");
+        console.log(err);
+      });
+  }
+
+  async function detectFace() {
+    overlay.width = video.videoWidth;
+    overlay.height = video.videoHeight;
+    const ctx = overlay.getContext("2d");
+
+    async function loop() {
+      const detections = await faceapi.detectAllFaces(
+        video,
+        new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.5 })
+      );
+
+      ctx.clearRect(0, 0, overlay.width, overlay.height);
+
+      detections.forEach(det => {
+        const { x, y, width, height } = det.box;
+        ctx.lineWidth = 3;
+        ctx.strokeStyle = "lime";
+        ctx.strokeRect(x, y, width, height);
+      });
+
+      requestAnimationFrame(loop);
+    }
+    loop();
+  }
+
+  captureBtn.addEventListener("click", () => {
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    canvas.getContext("2d").drawImage(video, 0, 0);
+
+    previewImage.src = canvas.toDataURL("image/jpeg", 0.35); // compress more
+
+    cameraContainer.style.display = "none";
+    previewContainer.style.display = "block";
+  });
+
+  retakeBtn.addEventListener("click", () => {
+    previewContainer.style.display = "none";
+    cameraContainer.style.display = "block";
+  });
+
+  submitBtn.addEventListener("click", () => {
+    loader.style.display = "block";
+    previewContainer.style.display = "none";
+
+    inputImage.value = previewImage.src;
+    uploadForm.submit();
+  });
+
+  startCamera();
+</script>
+
+
+{% endblock %}

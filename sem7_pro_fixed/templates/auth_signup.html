@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-md-8 col-lg-6">
+    <div class="card shadow-sm border-0">
+      <div class="card-body">
+        <h5 class="card-title mb-3">Sign Up</h5>
+        <form method="post" enctype="multipart/form-data">
+
+          <div class="mb-3">
+            <label class="form-label">Full Name</label>
+            <input type="text" name="name" class="form-control" required>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label">Email</label>
+            <input type="email" name="email" class="form-control" required>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label">Password</label>
+            <input type="password" name="password" class="form-control" required>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label">Phone Number</label>
+            <input type="tel" name="phone" class="form-control" pattern="[0-9]{10}" placeholder="10-digit number" required>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label">Address</label>
+            <textarea name="address" class="form-control" rows="2" required></textarea>
+          </div>
+
+          <!-- ✅ New Field: Age -->
+          <div class="mb-3">
+            <label class="form-label">Age</label>
+            <input type="number" name="age" class="form-control" min="18" max="100" required>
+          </div>
+
+          <!-- ✅ New Field: Annual Income -->
+          <div class="mb-3">
+            <label class="form-label">Annual Income (₹)</label>
+            <input type="number" name="annual_income" class="form-control" min="0" step="10000" placeholder="e.g., 500000" required>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label">Upload ID Photo (used for face auth)</label>
+            <input type="file" name="id_photo" class="form-control" accept="image/*" required>
+          </div>
+
+          <button class="btn btn-primary w-100">Create Account</button>
+        </form>
+
+        <div class="text-center mt-3">
+          <a href="{{ url_for('login') }}">Already have an account? Login</a>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
