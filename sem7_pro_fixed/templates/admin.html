@@ -58,11 +58,11 @@
                 </td>
                 <td class="text-center">
                   {% if not u.is_admin %}
-                  <a href="{{ url_for('admin_toggle', uid=u._id|string) }}" class="btn btn-sm btn-outline-primary px-2 py-1">
-                    <i class="bi bi-toggle-on"></i> Toggle
+                  <a href="{{ url_for('admin_toggle', uid=u._id|string) }}" class="btn btn-sm btn-outline-primary">
+                    Toggle
                   </a>
                   {% else %}
-                  <span class="text-muted small">—</span>
+                  —
                   {% endif %}
                 </td>
               </tr>
@@ -75,110 +75,108 @@
   </div>
 </div>
 
-<!-- Policies Table -->
+<!-- ================= CLAIMS TABLE (NEW) ================= -->
 <div class="card border-0 shadow-sm rounded-3 mt-4">
-  <div class="card-header bg-primary text-white fw-bold d-flex justify-content-between align-items-center">
-    📄 Manage Policies
-    <button type="button" class="btn btn-light btn-sm" data-bs-toggle="modal" data-bs-target="#addPolicyModal">➕ Add Policy</button>
+  <div class="card-header bg-dark text-white fw-bold">
+    📝 Claims Overview
   </div>
-  <div class="card-body">
-    {% if policy_defs %}
-    <div class="table-responsive">
-      <table class="table table-hover align-middle">
-        <thead>
-          <tr>
-            <th>Name</th>
-            <th>Category</th>
-            <th>Premium</th>
-            <th>Action</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for p in policy_defs %}
-          <tr>
-            <td>{{ p.name }}</td>
-            <td>{{ p.category }}</td>
-            <td>₹{{ "{:,}".format(p.premium_amount) }}</td>
-            <td>
-              <a href="{{ url_for('admin_delete_policy', policy_id=p._id|string) }}" class="btn btn-sm btn-danger">🗑 Delete</a>
-            </td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-    {% else %}
-      <p class="text-muted">No policies available.</p>
-    {% endif %}
+  <div class="card-body table-responsive">
+    <table class="table table-hover align-middle">
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Policy</th>
+          <th>Type</th>
+          <th>Amount</th>
+          <th>Risk</th>
+          <th>Decision</th>
+          <th>AI Used</th>
+          <th>Date</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for c in claims %}
+        <tr>
+          <td>#{{ c._id }}</td>
+
+          <td>
+            {{ c.policy.name }}
+            <div class="small text-muted">{{ c.policy.category }}</div>
+          </td>
+
+          <td>
+            {% if c.claim_type == "vehicle" %}
+              <span class="badge bg-warning text-dark">🚗 Vehicle</span>
+            {% else %}
+              <span class="badge bg-secondary">📄 Normal</span>
+            {% endif %}
+          </td>
+
+          <td>₹{{ "{:,}".format(c.amount) }}</td>
+
+          <td>
+            {% if c.risk_score is not none %}
+              {{ (c.risk_score * 100)|round(1) }}%
+            {% else %}
+              —
+            {% endif %}
+          </td>
+
+          <td>
+            {% if c.decision == "Auto-Approve" %}
+              <span class="badge bg-success">Auto</span>
+            {% elif c.decision == "Manual Review" %}
+              <span class="badge bg-warning text-dark">Manual</span>
+            {% else %}
+              <span class="badge bg-danger">Rejected</span>
+            {% endif %}
+          </td>
+
+          <td>
+            {% if c.claim_type == "vehicle" %}
+              YOLO
+            {% else %}
+              Doc-AI
+            {% endif %}
+          </td>
+
+          <td>{{ c.created_at | datetimeformat }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
   </div>
 </div>
 
-<!-- Add Policy Modal -->
-<div class="modal fade" id="addPolicyModal" tabindex="-1" aria-labelledby="addPolicyModalLabel" aria-hidden="true">
-  <div class="modal-dialog modal-lg">
-    <div class="modal-content">
-      <form action="{{ url_for('add_policy') }}" method="POST">
-        <div class="modal-header">
-          <h5 class="modal-title" id="addPolicyModalLabel">➕ Add New Policy</h5>
-          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-        </div>
-        <div class="modal-body">
-          <div class="row g-3">
-            <div class="col-md-6">
-              <label class="form-label">Name</label>
-              <input type="text" name="name" class="form-control" required>
-            </div>
-            <div class="col-md-6">
-              <label class="form-label">Category</label>
-              <select name="category" class="form-select" required>
-                <option value="">Select</option>
-                <option value="Health">Health</option>
-                <option value="Life">Life</option>
-                <option value="Car">Car</option>
-                <option value="Education">Education</option>
-                <option value="Travel">Travel</option>
-              </select>
-            </div>
-            <div class="col-md-12">
-              <label class="form-label">Description</label>
-              <textarea name="description" class="form-control" rows="2" required></textarea>
-            </div>
-            <div class="col-md-12">
-              <label class="form-label">Requirements</label>
-              <textarea name="requirements" class="form-control" rows="2"></textarea>
-            </div>
-            <div class="col-md-3">
-              <label class="form-label">Min Age</label>
-              <input type="number" name="min_age" class="form-control" required>
-            </div>
-            <div class="col-md-3">
-              <label class="form-label">Max Age</label>
-              <input type="number" name="max_age" class="form-control" required>
-            </div>
-            <div class="col-md-3">
-              <label class="form-label">Min Income</label>
-              <input type="number" name="min_income" class="form-control" required>
-            </div>
-            <div class="col-md-3">
-              <label class="form-label">Max Income</label>
-              <input type="number" name="max_income" class="form-control" required>
-            </div>
-            <div class="col-md-3">
-              <label class="form-label">Premium Amount</label>
-              <input type="number" name="premium_amount" class="form-control" required>
-            </div>
-            <div class="col-md-3">
-              <label class="form-label">Duration (Years)</label>
-              <input type="number" name="duration_years" class="form-control" required>
-            </div>
-          </div>
-        </div>
-        <div class="modal-footer">
-          <button type="submit" class="btn btn-primary">Add Policy</button>
-          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-        </div>
-      </form>
-    </div>
+<!-- ================= POLICIES TABLE ================= -->
+<div class="card border-0 shadow-sm rounded-3 mt-4">
+  <div class="card-header bg-primary text-white fw-bold d-flex justify-content-between align-items-center">
+    📄 Manage Policies
+    <button class="btn btn-light btn-sm" data-bs-toggle="modal" data-bs-target="#addPolicyModal">➕ Add Policy</button>
+  </div>
+  <div class="card-body table-responsive">
+    <table class="table table-hover">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Category</th>
+          <th>Premium</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for p in policy_defs %}
+        <tr>
+          <td>{{ p.name }}</td>
+          <td>{{ p.category }}</td>
+          <td>₹{{ "{:,}".format(p.premium_amount) }}</td>
+          <td>
+            <a href="{{ url_for('admin_delete_policy', policy_id=p._id|string) }}" class="btn btn-sm btn-danger">Delete</a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
   </div>
 </div>
 

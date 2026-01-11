@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="row g-4">
+
+  <!-- ================= UPLOAD & ESTIMATE ================= -->
+  <div class="col-lg-5">
+    <div class="card shadow-sm border-0">
+      <div class="card-body">
+        <h5 class="card-title">🚗 Vehicle Damage Assessment</h5>
+
+        <!-- STEP 1: IMAGE UPLOAD -->
+        <form method="post" enctype="multipart/form-data">
+          <input type="hidden" name="stage" value="estimate">
+
+          <div class="mb-3">
+            <label class="form-label">Upload Damage Image</label>
+            <input type="file" name="claim_files" class="form-control" required>
+          </div>
+
+          <button class="btn btn-primary w-100">
+            Analyze Damage
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= AI RESULT + BARGAIN ================= -->
+  <div class="col-lg-7">
+    <h5 class="mb-3">Assessment</h5>
+
+    {% if report and report.estimated_damage %}
+      <!-- AI ESTIMATE -->
+      <div class="card shadow-sm mb-3">
+        <div class="card-body">
+          <h6 class="fw-bold">AI Estimated Damage Cost</h6>
+          <h3 class="text-success">₹{{ "{:,}".format(report.estimated_damage) }}</h3>
+
+          <div class="text-muted small mt-2">
+            Detected via YOLO Damage Detection
+          </div>
+        </div>
+      </div>
+
+      <!-- STEP 2: BARGAIN -->
+      <div class="card shadow-sm">
+        <div class="card-body">
+          <h6 class="fw-bold">Your Claim Amount</h6>
+
+          <form method="post">
+            <input type="hidden" name="stage" value="bargain">
+            <input type="hidden" name="ai_estimate" value="{{ report.estimated_damage }}">
+
+            <div class="mb-3">
+              <input
+                type="number"
+                name="claim_amount"
+                class="form-control"
+                value="{{ report.estimated_damage }}"
+                min="{{ report.estimated_damage * 0.7 }}"
+                max="{{ report.estimated_damage * 1.5 }}"
+                required
+              >
+              <small class="text-muted">
+                You can negotiate within a reasonable range
+              </small>
+            </div>
+
+            <button class="btn btn-success w-100">
+              Submit Claim
+            </button>
+          </form>
+        </div>
+      </div>
+
+    {% elif report and report.decision %}
+      <!-- FINAL DECISION -->
+      <div class="card shadow-sm">
+        <div class="card-body">
+          <h5 class="fw-bold">Decision</h5>
+
+          <span class="badge
+            {% if report.decision == 'Auto-Approve' %}bg-success
+            {% elif report.decision == 'Manual Review' %}bg-warning text-dark
+            {% else %}bg-danger{% endif %}">
+            {{ report.decision }}
+          </span>
+
+          <div class="mt-2 text-muted">
+            Fraud Risk: {{ (report.risk_score * 100)|round(1) }}%
+          </div>
+
+          <pre class="small mt-3">{{ report.signals | tojson(indent=2) }}</pre>
+        </div>
+      </div>
+
+    {% else %}
+      <div class="text-muted">
+        Upload a damage image to begin assessment.
+      </div>
+    {% endif %}
+  </div>
+</div>
+
+{% endblock %}

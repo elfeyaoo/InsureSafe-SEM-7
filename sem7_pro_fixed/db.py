@@ -28,9 +28,9 @@ def verify_password(stored_hash, stored_salt, password_attempt):
 
 # ---------------- User Functions ---------------- #
 def init_db():
-    users_col.create_index("email", unique=True)
-    policies_col.create_index("name", unique=True)
-    create_default_admin()
+    user_policies_col.create_index([("user_id", 1), ("policy_id", 1)])
+    claims_col.create_index("created_at")
+    claims_col.create_index("user_id")
 
 def add_user(
     name,
@@ -106,16 +106,24 @@ def get_policy_by_id(pid):
     return policies_col.find_one({"_id": pid})
 
 # ---------------- User-Policy Functions ---------------- #
-def assign_policy_to_user(user_id, policy_id, status="pending", doc_valid=False):
+def assign_policy_to_user(
+    user_id,
+    policy_id,
+    status="pending",
+    doc_valid=False,
+    uploaded_docs=None
+):
     if isinstance(user_id, str):
         user_id = ObjectId(user_id)
     if isinstance(policy_id, str):
         policy_id = ObjectId(policy_id)
+
     record = {
         "user_id": user_id,
         "policy_id": policy_id,
         "status": status,
         "doc_valid": doc_valid,
+        "uploaded_docs": uploaded_docs or {},
         "applied_at": datetime.utcnow()
     }
     return user_policies_col.insert_one(record).inserted_id
@@ -135,7 +143,7 @@ def get_user_policies(user_id):
         {"$sort": {"applied_at": -1}}
     ]))
 
-def update_user_policy_status(up_id, status, doc_valid=None):
+def update_user_policy_status(user_policy_id, status, doc_valid):
     if isinstance(up_id, str):
         up_id = ObjectId(up_id)
     upd = {"status": status}
@@ -144,11 +152,20 @@ def update_user_policy_status(up_id, status, doc_valid=None):
     user_policies_col.update_one({"_id": up_id}, {"$set": upd})
 
 # ---------------- Claims Functions ---------------- #
-def add_claim(user_id, policy_id, amount, status="pending", risk_score=None, decision=None):
+def add_claim(
+    user_id,
+    policy_id,
+    amount,
+    status="pending",
+    risk_score=None,
+    decision=None,
+    claim_type=None
+):
     if isinstance(user_id, str):
         user_id = ObjectId(user_id)
     if isinstance(policy_id, str):
         policy_id = ObjectId(policy_id)
+
     record = {
         "user_id": user_id,
         "policy_id": policy_id,
@@ -156,8 +173,10 @@ def add_claim(user_id, policy_id, amount, status="pending", risk_score=None, dec
         "status": status,
         "risk_score": risk_score,
         "decision": decision,
+        "claim_type": claim_type or "normal",
         "created_at": datetime.utcnow()
     }
+
     return claims_col.insert_one(record).inserted_id
 
 def db_update_claim_status(claim_id, status, decision=None):

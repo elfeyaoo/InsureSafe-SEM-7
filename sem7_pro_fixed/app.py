@@ -31,7 +31,8 @@ app = Flask(__name__)
 app.secret_key = os.getenv("SECRET_KEY", "dev-secret")
 app.config["UPLOAD_FOLDER"] = "uploads"
 app.config["ID_PHOTOS"] = "id_photos"
-app.config["DEMO_MODE"] = True
+app.config["DEMO_MODE"] = os.getenv("DEMO_MODE", "false").lower() == "true"
+
 app.config['MAX_CONTENT_LENGTH'] = 20 * 1024 * 1024
 
 
@@ -70,6 +71,23 @@ def admin_required(f):
             abort(403)
         return f(*args, **kwargs)
     return wrapper
+
+def detect_claim_type(policy, saved_files):
+    """
+    Detect whether claim is vehicle-based or normal
+    """
+    # Policy-based detection
+    if policy.get("category", "").lower() in ("car", "bike"):
+        return "vehicle"
+
+    # File-based detection
+    image_exts = (".jpg", ".jpeg", ".png")
+    image_files = [f for f in saved_files if f.lower().endswith(image_exts)]
+
+    if image_files and len(image_files) == len(saved_files):
+        return "vehicle"
+
+    return "normal"
 
 # =====================================
 # UPLOADS SERVING ROUTE
@@ -176,7 +194,9 @@ def login():
         flash("Invalid credentials.", "danger")
     return render_template("auth_login.html")
 
-# ===================== FORGOT PASSWORD =====================
+# ============================================================
+# ROUTES: FORGET PASSWORD
+# ============================================================
 @app.route("/auth/forgot", methods=["GET","POST"])
 @app.route("/auth/forgot/<token>", methods=["GET","POST"])
 def forgot(token=None):
@@ -375,7 +395,7 @@ def policies():
 # ============================================================
 # APPLY POLICY
 # ============================================================
-@app.route("/apply/<pid>", methods=["GET","POST"])
+@app.route("/apply/<pid>", methods=["GET", "POST"])
 @login_required
 def apply_policy(pid):
     policy = get_policy_by_id(pid)
@@ -383,6 +403,7 @@ def apply_policy(pid):
         abort(404)
 
     result = None
+
     CATEGORY_REQUIREMENTS = {
         "Health": ["aadhar_card", "pan_card", "medical_records"],
         "Car": ["aadhar_card", "pan_card", "driving_license", "vehicle_registration", "legal_rc"],
@@ -391,7 +412,6 @@ def apply_policy(pid):
         "Family": ["aadhar_card", "pan_card", "family_details"]
     }
 
-    # Map of human-readable names for flash messages / form labels
     REQUIREMENT_LABELS = {
         "aadhar_card": "Aadhar Card",
         "pan_card": "PAN Card",
@@ -404,64 +424,96 @@ def apply_policy(pid):
         "family_details": "Family Member Details"
     }
 
-    required_fields = CATEGORY_REQUIREMENTS.get(policy.get("category", "General"), ["aadhar_card", "pan_card"])
-    human_readable_requirements = [REQUIREMENT_LABELS[f] for f in required_fields]
+    # ✅ Required document KEYS
+    required_fields = CATEGORY_REQUIREMENTS.get(
+        policy.get("category", "General"),
+        ["aadhar_card", "pan_card"]
+    )
+
+    # ✅ Pass KEY → LABEL mapping to template
+    requirements = {
+        field: REQUIREMENT_LABELS[field]
+        for field in required_fields
+    }
 
     if request.method == "POST":
-        # Collect basic info
+
+        # -----------------------------
+        # 1️⃣ Collect user-entered data
+        # -----------------------------
         form_data = {
-            "name": request.form.get("name",""),
-            "dob": request.form.get("dob",""),
-            "gender": request.form.get("gender",""),
-            "email": request.form.get("email",""),
-            "phone": request.form.get("phone",""),
-            "address": request.form.get("address","")
+            "name": request.form.get("name", "").strip(),
+            "dob": request.form.get("dob", "").strip(),
+            "gender": request.form.get("gender", "").strip(),
+            "email": request.form.get("email", "").strip(),
+            "phone": request.form.get("phone", "").strip(),
+            "address": request.form.get("address", "").strip()
         }
 
-        # Save uploaded documents
+        # -----------------------------
+        # 2️⃣ Save uploaded documents
+        # -----------------------------
         uploaded_docs = {}
-        doc_dir = os.path.join(app.config["UPLOAD_FOLDER"], "documents", str(session["user_id"]))
+        doc_dir = os.path.join(
+            app.config["UPLOAD_FOLDER"],
+            "documents",
+            str(session["user_id"])
+        )
         os.makedirs(doc_dir, exist_ok=True)
 
         for field in required_fields:
             file = request.files.get(field)
+
             if not file or not file.filename:
-                flash(f"Please upload required document: {REQUIREMENT_LABELS[field]}", "warning")
+                flash(f"Please upload: {REQUIREMENT_LABELS[field]}", "warning")
                 return redirect(request.url)
 
-            fpath = os.path.join(doc_dir, secure_filename(f"{int(time.time())}_{file.filename}"))
+            filename = secure_filename(f"{int(time.time())}_{file.filename}")
+            fpath = os.path.join(doc_dir, filename)
             file.save(fpath)
+
             uploaded_docs[field] = fpath
 
-        # Validate uploaded documents (can be extended per document type)
+        # -----------------------------
+        # 3️⃣ OCR / Document Verification
+        # -----------------------------
         validation_data = {
             "name": form_data["name"],
-            "dob": form_data["dob"]
+            "dob": form_data["dob"],
+            "gender": form_data["gender"]
         }
 
-        # For simplicity, validate only first document as main verification
-        main_doc_field = required_fields[0]
-        result = doc_verifier.validate(uploaded_docs[main_doc_field], validation_data)
+        # ✅ Use Aadhaar as primary verification
+        primary_doc_key = "aadhar_card"
+        result = doc_verifier.validate(
+            uploaded_docs[primary_doc_key],
+            validation_data
+        )
+
         valid = bool(result.get("is_valid"))
 
-        # Save policy assignment
+        # -----------------------------
+        # 4️⃣ Save policy assignment
+        # -----------------------------
         assign_policy_to_user(
-            session["user_id"], pid,
+            user_id=session["user_id"],
+            policy_id=pid,
             status="active" if valid else "pending",
             doc_valid=valid,
             uploaded_docs=uploaded_docs
         )
 
         if valid:
-            flash("Application submitted and verified. Policy activated.", "success")
+            flash("✅ Application verified. Policy activated.", "success")
         else:
-            flash("Document mismatch. Application pending manual review.", "warning")
+            flash("⚠ Document mismatch. Sent for manual review.", "warning")
+
         return redirect(url_for("dashboard"))
 
     return render_template(
         "apply_policy.html",
         policy=policy,
-        requirements=human_readable_requirements,
+        requirements=requirements,   # ✅ dictionary
         result=result
     )
 
@@ -473,31 +525,97 @@ def apply_policy(pid):
 def dashboard():
     uid = session["user_id"]
     mypol = get_user_policies(uid)
+    claims = list(claims_col.aggregate([
+    {"$match": {"user_id": ObjectId(uid)}},
+    {"$lookup": {
+        "from": "policies",
+        "localField": "policy_id",
+        "foreignField": "_id",
+        "as": "policy"
+    }},
+    {"$unwind": "$policy"},
+    {"$sort": {"created_at": -1}}
+]))
 
-    claim_report = None
+
+    return render_template(
+        "dashboard.html",
+        policies=mypol,
+        claims=claims
+    )
+
+# ============================================================
+# APPLY CLAIM (Dedicated AI Claims Page)
+# ============================================================
+@app.route("/claim/apply/<policy_id>", methods=["GET", "POST"])
+@login_required
+def apply_claim(policy_id):
+    policy = get_policy_by_id(policy_id)
+    if not policy:
+        abort(404)
+
+    report = None
+
     if request.method == "POST":
-        pid = request.form.get("policy_id")
-        amount = float(request.form.get("claim_amount") or 0)
-        files = request.files.getlist("claim_files")
+        stage = request.form.get("stage")  # 🔥 CRITICAL
 
-        saved = []
-        for f in files:
-            if f and f.filename:
-                c_dir = os.path.join(app.config["UPLOAD_FOLDER"], "claims")
-                os.makedirs(c_dir, exist_ok=True)
-                path = os.path.join(c_dir, secure_filename(f"{int(time.time())}_{f.filename}"))
-                f.save(path)
-                saved.append(path)
+        # =========================
+        # STAGE 1: IMAGE → AI ESTIMATE
+        # =========================
+        if stage == "estimate":
+            files = request.files.getlist("claim_files")
 
-        sum_insured = 500000 if pid != "ELITE_PLUS" else 2000000
-        claim_report = claims_ai.evaluate(saved, {"claim_amount": amount, "policy_sum_insured": sum_insured})
+            if not files or not files[0].filename:
+                flash("Please upload a damage image.", "warning")
+                return redirect(request.url)
 
-        add_claim(uid, pid, amount, status="pending",
-                  risk_score=claim_report.get("risk_score"),
-                  decision=claim_report.get("decision"))
-        flash("Claim evaluated by AI.", "info")
+            c_dir = os.path.join(app.config["UPLOAD_FOLDER"], "claims")
+            os.makedirs(c_dir, exist_ok=True)
 
-    return render_template("dashboard.html", policies=mypol, claim_report=claim_report)
+            f = files[0]
+            image_path = os.path.join(
+                c_dir,
+                secure_filename(f"{int(time.time())}_{f.filename}")
+            )
+            f.save(image_path)
+
+            report = claims_ai.evaluate_vehicle_damage(
+                image_path=image_path,
+                vehicle_type=policy.get("category", "").lower()
+            )
+
+        # =========================
+        # STAGE 2: BARGAIN → FINAL DECISION
+        # =========================
+        elif stage == "bargain":
+            ai_estimate = float(request.form.get("ai_estimate", 0))
+            claim_amount = float(request.form.get("claim_amount", 0))
+
+            report = claims_ai.evaluate_bargain(
+                ai_estimate=ai_estimate,
+                user_amount=claim_amount
+            )
+
+            add_claim(
+                session["user_id"],
+                policy_id,
+                claim_amount,
+                status="pending",
+                risk_score=report.get("risk_score"),
+                decision=report.get("decision"),
+                claim_type="vehicle"
+            )
+
+            flash("Vehicle claim submitted successfully.", "success")
+
+        else:
+            flash("Invalid claim stage.", "danger")
+
+    return render_template(
+        "apply_claim.html",
+        policy=policy,
+        report=report
+    )
 
 # ============================================================
 # PROFILE
@@ -574,75 +692,109 @@ def admin():
     try:
         users = list(users_col.find())
         policy_defs = list(policies_col.find())
-        claims = list(claims_col.find())
 
-        enriched_policies = []
-        for u in users:
-            uid_str = str(u["_id"])
-            user_policies = get_user_policies(uid_str) or []
-            for up in user_policies:
-                policy = get_policy_by_id(up.get("policy_id"))
-                enriched_policies.append({
-                    **up,
-                    "user": u,
-                    "policy": policy
-                })
+        # -------- Claims with JOIN --------
+        enriched_claims = list(claims_col.aggregate([
+            {
+                "$lookup": {
+                    "from": "users",
+                    "localField": "user_id",
+                    "foreignField": "_id",
+                    "as": "user"
+                }
+            },
+            { "$unwind": "$user" },
+            {
+                "$lookup": {
+                    "from": "policies",
+                    "localField": "policy_id",
+                    "foreignField": "_id",
+                    "as": "policy"
+                }
+            },
+            { "$unwind": "$policy" },
+            { "$sort": { "created_at": -1 } }
+        ]))
 
-        enriched_claims = []
-        for c in claims:
-            user = get_user_by_id(c.get("user_id"))
-            policy = get_policy_by_id(c.get("policy_id"))
-            enriched_claims.append({
-                **c,
-                "user": user,
-                "policy": policy
-            })
+        # Ensure claim_type exists
+        for c in enriched_claims:
+            c.setdefault("claim_type", "normal")
 
         counts = {
-            "n_users": len(users),
-            "n_up": len(policy_defs),
-            "n_c": len(claims),
+            "n_users": users_col.count_documents({}),
+            "n_up": policies_col.count_documents({}),
+            "n_c": claims_col.count_documents({}),
         }
 
         return render_template(
             "admin.html",
             users=users,
-            policies=enriched_policies,
             policy_defs=policy_defs,
             claims=enriched_claims,
             counts=counts
         )
 
     except Exception as e:
-        flash(f"Failed to load admin data: {e}", "danger")
+        flash(f"Admin load failed: {e}", "danger")
         return render_template(
             "admin.html",
-            users=[], policies=[], policy_defs=[], claims=[], counts={"n_users":0,"n_up":0,"n_c":0}
+            users=[],
+            policy_defs=[],
+            claims=[],
+            counts={"n_users": 0, "n_up": 0, "n_c": 0}
         )
 
 @app.route("/admin/update_policy_status/<policy_id>/<status>")
 @admin_required
 def update_policy_status(policy_id, status):
-    update_user_policy_status(policy_id, status, doc_valid=status.lower() in ("approved","active"))
-    flash("Policy status updated.", "success")
+    try:
+        update_user_policy_status(
+            policy_id,
+            status,
+            doc_valid=status.lower() in ("approved", "active")
+        )
+        flash("Policy status updated.", "success")
+    except Exception as e:
+        flash(f"Failed to update policy: {e}", "danger")
+
     return redirect(url_for("admin"))
 
 @app.route("/admin/update_claim_status/<claim_id>/<status>")
 @admin_required
 def update_claim_status(claim_id, status):
-    decision = "Valid" if status.lower() in ("approved","approve") else "Invalid"
-    db_update_claim_status(claim_id, status, decision)
-    flash("Claim status updated.", "success")
+    try:
+        status = status.lower()
+
+        if status == "approved":
+            decision = "Auto-Approve"
+        elif status == "manual":
+            decision = "Manual Review"
+        else:
+            decision = "Rejected"
+
+        db_update_claim_status(claim_id, status, decision)
+        flash("Claim status updated.", "success")
+
+    except Exception as e:
+        flash(f"Failed to update claim: {e}", "danger")
+
     return redirect(url_for("admin"))
 
 @app.route("/admin/toggle/<uid>")
 @admin_required
 def admin_toggle(uid):
-    new_status = toggle_user_active(uid)
-    if new_status is not None:
-        flash(f"User status updated to {'Active' if new_status else 'Inactive'}.", "success")
-    else:
-        flash("User not found.", "danger")
+    try:
+        new_status = toggle_user_active(uid)
+        if new_status is not None:
+            flash(
+                f"User {'activated' if new_status else 'deactivated'}.",
+                "success"
+            )
+        else:
+            flash("User not found.", "warning")
+    except Exception as e:
+        flash(f"Toggle failed: {e}", "danger")
+
     return redirect(url_for("admin"))
 
 # ============================================================
@@ -655,21 +807,22 @@ def add_policy():
         data = request.form
         policy = {
             "name": data.get("name"),
-            "description": data.get("description"),
-            "requirements": data.get("requirements"),
-            "min_age": int(data.get("min_age") or 0),
-            "max_age": int(data.get("max_age") or 100),
-            "min_income": float(data.get("min_income") or 0),
-            "max_income": float(data.get("max_income") or 0),
-            "premium_amount": float(data.get("premium_amount") or 0),
-            "duration_years": int(data.get("duration_years") or 1),
             "category": data.get("category"),
-            "created_at": int(time.time())
+            "description": data.get("description"),
+            "requirements": data.get("requirements", ""),
+            "min_age": int(data.get("min_age", 0)),
+            "max_age": int(data.get("max_age", 100)),
+            "min_income": float(data.get("min_income", 0)),
+            "max_income": float(data.get("max_income", 0)),
+            "premium_amount": float(data.get("premium_amount", 0)),
+            "duration_years": int(data.get("duration_years", 1)),
+            "created_at": datetime.utcnow()
         }
         policies_col.insert_one(policy)
         flash("Policy added successfully.", "success")
     except Exception as e:
         flash(f"Failed to add policy: {e}", "danger")
+
     return redirect(url_for("admin"))
 
 @app.route("/admin/policy/delete/<policy_id>", methods=["GET","POST"])

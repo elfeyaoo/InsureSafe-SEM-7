@@ -1,0 +1,51 @@
+name,description,requirements,min_age,max_age,min_income,max_income,premium_amount,duration_years,category
+WellCare Shield 573,Comprehensive health coverage for individuals with cashless hospitalization.,Aadhar Card;PAN Card;Medical Certificate,18,57,300000,1200000,33181,16,Health
+MediSecure Plus 501,Premium medical insurance with annual health checkups and critical illness cover.,Aadhar Card;PAN Card;Medical Certificate,22,61,200000,800000,73121,24,Health
+HealthGuard Elite 337,Affordable plan offering doctor consultations and pharmacy discounts.,Aadhar Card;PAN Card;Medical Certificate,27,49,50000,1200000,41084,17,Health
+Wellness Prime 836,Exclusive plan with maternity and emergency care support.,Aadhar Card;PAN Card;Medical Certificate,30,59,50000,800000,88377,25,Health
+CareSure Advantage 572,Full-spectrum health protection with no-claim bonus benefits.,Aadhar Card;PAN Card;Medical Certificate,20,49,300000,800000,48181,6,Health
+Lifeline Protect 986,Comprehensive health coverage for individuals with cashless hospitalization.,Aadhar Card;PAN Card;Medical Certificate,23,46,300000,800000,63107,29,Health
+VitalHealth Cover 713,Premium medical insurance with annual health checkups and critical illness cover.,Aadhar Card;PAN Card;Medical Certificate,24,59,50000,800000,28390,6,Health
+Shield360 Medical 357,Affordable plan offering doctor consultations and pharmacy discounts.,Aadhar Card;PAN Card;Medical Certificate,22,48,300000,500000,23544,5,Health
+MediAssist Premier 189,Exclusive plan with maternity and emergency care support.,Aadhar Card;PAN Card;Medical Certificate,19,46,100000,800000,14661,27,Health
+Healthwise Platinum 646,Full-spectrum health protection with no-claim bonus benefits.,Aadhar Card;PAN Card;Medical Certificate,26,51,100000,1200000,82704,6,Health
+WellCare Shield 676,Comprehensive health coverage for individuals with cashless hospitalization.,Aadhar Card;PAN Card;Medical Certificate,26,49,200000,500000,62877,8,Health
+MediSecure Plus 723,Premium medical insurance with annual health checkups and critical illness cover.,Aadhar Card;PAN Card;Medical Certificate,24,58,50000,800000,13096,16,Health
+HealthGuard Elite 271,Affordable plan offering doctor consultations and pharmacy discounts.,Aadhar Card;PAN Card;Medical Certificate,23,51,200000,1200000,60864,21,Health
+Wellness Prime 486,Exclusive plan with maternity and emergency care support.,Aadhar Card;PAN Card;Medical Certificate,22,45,50000,1200000,87133,21,Health
+CareSure Advantage 660,Full-spectrum health protection with no-claim bonus benefits.,Aadhar Card;PAN Card;Medical Certificate,24,64,200000,1200000,19052,30,Health
+Lifeline Protect 624,Comprehensive health coverage for individuals with cashless hospitalization.,Aadhar Card;PAN Card;Medical Certificate,29,47,300000,500000,80462,21,Health
+VitalHealth Cover 261,Premium medical insurance with annual health checkups and critical illness cover.,Aadhar Card;PAN Card;Medical Certificate,29,65,100000,1200000,44867,5,Health
+Shield360 Medical 949,Affordable plan offering doctor consultations and pharmacy discounts.,Aadhar Card;PAN Card;Medical Certificate,25,61,50000,1200000,43614,22,Health
+MediAssist Premier 966,Exclusive plan with maternity and emergency care support.,Aadhar Card;PAN Card;Medical Certificate,29,63,100000,1200000,25303,7,Health
+Healthwise Platinum 140,Full-spectrum health protection with no-claim bonus benefits.,Aadhar Card;PAN Card;Medical Certificate,25,49,100000,800000,36352,23,Health
+DriveSafe Protect 255,"Covers accidental damage, third-party liability, and theft protection.",Aadhar Card;PAN Card;Driving License;Number of the vehicle's registration;Legal RC,23,42,100000,500000,12957,26,Car
+AutoShield Premium 207,Zero-depreciation car insurance with roadside assistance.,Aadhar Card;PAN Card;Driving License;Number of the vehicle's registration;Legal RC,19,59,100000,500000,65692,9,Car
+RoadGuard Secure 339,Premium plan with engine and gearbox protection included.,Aadhar Card;PAN Card;Driving License;Number of the vehicle's registration;Legal RC,25,48,50000,500000,86261,11,Car
+CarSure Elite 815,Affordable policy with rapid claim settlement and towing support.,Aadhar Card;PAN Card;Driving License;Number of the vehicle's registration;Legal RC,24,56,100000,1200000,74081,27,Car
+DriveWell Cover 864,"Full coverage for fire, flood, and collision risks.",Aadhar Card;PAN Card;Driving License;Number of the vehicle's registration;Legal RC,26,49,200000,500000,27018,17,Car
+MotorMax Assurance 173,"Covers accidental damage, third-party liability, and theft protection.",Aadhar Card;PAN Card;Driving License;Number of the vehicle's registration;Legal RC,24,42,50000,800000,6776,12,Car
+TurboProtect Plan 677,Zero-depreciation car insurance with roadside assistance.,Aadhar Card;PAN Card;Driving License;Number of the vehicle's registration;Legal RC,29,49,50000,1200000,82755,13,Car
+WheelGuard Advantage 333,Premium plan with engine and gearbox protection included.,Aadhar Card;PAN Card;Driving License;Number of the vehicle's registration;Legal RC,25,53,200000,1200000,49809,21,Car
+RideSafe Ultimate 905,Affordable policy with rapid claim settlement and towing support.,Aadhar Card;PAN Card;Driving License;Number of the vehicle's registration;Legal RC,21,61,100000,1200000,4965,13,Car
+DriveSecure Plus 789,"Full coverage for fire, flood, and collision risks.",Aadhar Card;PAN Card;Driving License;Number of the vehicle's registration;Legal RC,22,55,200000,800000,37289,24,Car
+LifeShield Secure 100,Secure your family's future with long-term life coverage and tax benefits.,Aadhar Card;PAN Card;Income Proof;Medical Records,22,41,100000,500000,95646,6,Life
+FutureGuard Plan 570,Plan designed to support dependents with lump sum payout on demise.,Aadhar Card;PAN Card;Income Proof;Medical Records,18,58,200000,500000,36227,8,Life
+SafeLife Elite 894,Affordable premium term plan with accidental death benefits.,Aadhar Card;PAN Card;Income Proof;Medical Records,18,51,50000,1200000,91681,7,Life
+LifeCare Shield 326,Comprehensive life insurance with maturity return options.,Aadhar Card;PAN Card;Income Proof;Medical Records,23,56,200000,500000,43909,13,Life
+GuardianLife Plus 361,Flexible policy with riders for disability and critical illness.,Aadhar Card;PAN Card;Income Proof;Medical Records,24,52,300000,800000,72059,19,Life
+TermSafe Protect 276,Secure your family's future with long-term life coverage and tax benefits.,Aadhar Card;PAN Card;Income Proof;Medical Records,23,59,100000,500000,77050,23,Life
+SecureFuture Policy 714,Plan designed to support dependents with lump sum payout on demise.,Aadhar Card;PAN Card;Income Proof;Medical Records,20,49,200000,1200000,74120,12,Life
+LifeAhead Assurance 258,Affordable premium term plan with accidental death benefits.,Aadhar Card;PAN Card;Income Proof;Medical Records,22,65,300000,500000,82509,18,Life
+ProtectLife Advantage 908,Comprehensive life insurance with maturity return options.,Aadhar Card;PAN Card;Income Proof;Medical Records,28,42,200000,800000,79183,25,Life
+PromisePlus Plan 822,Flexible policy with riders for disability and critical illness.,Aadhar Card;PAN Card;Income Proof;Medical Records,23,40,300000,1200000,63012,5,Life
+RideSafe Shield 590,Comprehensive two-wheeler insurance with roadside assistance.,Aadhar Card;PAN Card;Driving License;Bike Registration;Number of the vehicle's registration;Legal RC,25,49,50000,1200000,55857,28,Bike
+BikeGuard Pro 806,Budget-friendly bike policy covering damage and theft.,Aadhar Card;PAN Card;Driving License;Bike Registration;Number of the vehicle's registration;Legal RC,28,45,300000,1200000,23185,20,Bike
+TwoWheeler Secure 720,"Full coverage for accidents, floods, and fire incidents.",Aadhar Card;PAN Card;Driving License;Bike Registration;Number of the vehicle's registration;Legal RC,27,60,300000,1200000,43652,5,Bike
+MotoProtect Elite 553,Enhanced plan with zero depreciation and helmet cover.,Aadhar Card;PAN Card;Driving License;Bike Registration;Number of the vehicle's registration;Legal RC,21,65,200000,800000,36951,17,Bike
+WheelSafe Plan 534,Instant claim processing with online approvals.,Aadhar Card;PAN Card;Driving License;Bike Registration;Number of the vehicle's registration;Legal RC,27,57,50000,500000,14744,9,Bike
+FamilyCare Shield 475,Covers entire family under one premium with cashless treatment.,Aadhar Card;PAN Card;Family Member Details,30,48,200000,500000,91681,13,Family
+HomeGuard Secure 186,Affordable family protection with annual health checkups.,Aadhar Card;PAN Card;Family Member Details,21,51,300000,1200000,68451,19,Family
+TotalFamily Protect 249,"Full coverage for spouse, children, and dependent parents.",Aadhar Card;PAN Card;Family Member Details,24,44,100000,800000,3236,21,Family
+FamilyWellness Plan 856,Includes maternity and newborn care along with hospitalization.,Aadhar Card;PAN Card;Family Member Details,27,62,50000,500000,72067,12,Family
+GuardianFamily Pact 640,Comprehensive family wellness plan with ambulance cover.,Aadhar Card;PAN Card;Family Member Details,21,51,300000,1200000,3441,11,Family
