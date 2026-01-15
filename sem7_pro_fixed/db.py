@@ -14,24 +14,46 @@ users_col = db["users"]
 policies_col = db["policies"]
 user_policies_col = db["user_policies"]
 claims_col = db["claims"]
+otp_col = db["otps"]   # ✅ OTP collection
 
 # ---------------- Password Hashing ---------------- #
 def hash_password(password, salt=None):
     if salt is None:
         salt = secrets.token_hex(16)
-    pwd_hash = hmac.new(salt.encode(), password.encode(), hashlib.sha256).hexdigest()
+    pwd_hash = hmac.new(
+        salt.encode(),
+        password.encode(),
+        hashlib.sha256
+    ).hexdigest()
     return pwd_hash, salt
 
 def verify_password(stored_hash, stored_salt, password_attempt):
     attempt_hash, _ = hash_password(password_attempt, stored_salt)
     return hmac.compare_digest(stored_hash, attempt_hash)
 
-# ---------------- User Functions ---------------- #
+# ---------------- DB INIT ---------------- #
 def init_db():
+    # USERS
+    users_col.create_index("email", unique=True)
+
+    # USER POLICIES
     user_policies_col.create_index([("user_id", 1), ("policy_id", 1)])
+
+    # CLAIMS
     claims_col.create_index("created_at")
     claims_col.create_index("user_id")
 
+    # OTP (🔥 IMPORTANT)
+    otp_col.create_index("email")
+    otp_col.create_index(
+        "expires_at",
+        expireAfterSeconds=0   # auto-delete expired OTPs
+    )
+
+    # DEFAULT ADMIN
+    create_default_admin()
+
+# ---------------- User Functions ---------------- #
 def add_user(
     name,
     email,
@@ -41,7 +63,8 @@ def add_user(
     address=None,
     age=None,
     annual_income=None,
-    is_admin=False
+    is_admin=False,
+    email_verified=False   # ✅ VERIFIED ONLY AFTER OTP
 ):
     pwd_hash, salt = hash_password(password)
     user = {
@@ -56,11 +79,11 @@ def add_user(
         "annual_income": int(annual_income) if annual_income else None,
         "is_admin": is_admin,
         "is_active": True,
+        "email_verified": email_verified,   # 🔐 IMPORTANT
         "created_at": datetime.utcnow()
     }
     result = users_col.insert_one(user)
     return str(result.inserted_id)
-
 
 def get_user_by_email(email):
     return users_col.find_one({"email": email})
@@ -72,21 +95,29 @@ def get_user_by_id(user_id):
 
 def authenticate_user(email, password):
     user = get_user_by_email(email)
-    if user and verify_password(user["password_hash"], user["salt"], password):
+    if user and verify_password(
+        user["password_hash"],
+        user["salt"],
+        password
+    ):
         return user
     return None
 
 def toggle_user_active(uid):
-    from bson import ObjectId
     try:
         oid = ObjectId(uid)
     except:
         oid = uid
+
     user = users_col.find_one({"_id": oid})
     if not user:
         return None
-    new_status = not user.get("is_active", True)  # default True
-    users_col.update_one({"_id": oid}, {"$set": {"is_active": new_status}})
+
+    new_status = not user.get("is_active", True)
+    users_col.update_one(
+        {"_id": oid},
+        {"$set": {"is_active": new_status}}
+    )
     return new_status
 
 # ---------------- Policy Functions ---------------- #
@@ -131,6 +162,7 @@ def assign_policy_to_user(
 def get_user_policies(user_id):
     if isinstance(user_id, str):
         user_id = ObjectId(user_id)
+
     return list(user_policies_col.aggregate([
         {"$match": {"user_id": user_id}},
         {"$lookup": {
@@ -143,13 +175,18 @@ def get_user_policies(user_id):
         {"$sort": {"applied_at": -1}}
     ]))
 
-def update_user_policy_status(user_policy_id, status, doc_valid):
-    if isinstance(up_id, str):
-        up_id = ObjectId(up_id)
+def update_user_policy_status(user_policy_id, status, doc_valid=None):
+    if isinstance(user_policy_id, str):
+        user_policy_id = ObjectId(user_policy_id)
+
     upd = {"status": status}
     if doc_valid is not None:
         upd["doc_valid"] = doc_valid
-    user_policies_col.update_one({"_id": up_id}, {"$set": upd})
+
+    user_policies_col.update_one(
+        {"_id": user_policy_id},
+        {"$set": upd}
+    )
 
 # ---------------- Claims Functions ---------------- #
 def add_claim(
@@ -176,22 +213,28 @@ def add_claim(
         "claim_type": claim_type or "normal",
         "created_at": datetime.utcnow()
     }
-
     return claims_col.insert_one(record).inserted_id
 
 def db_update_claim_status(claim_id, status, decision=None):
     if isinstance(claim_id, str):
         claim_id = ObjectId(claim_id)
+
     upd = {"status": status}
     if decision is not None:
         upd["decision"] = decision
-    claims_col.update_one({"_id": claim_id}, {"$set": upd})
+
+    claims_col.update_one(
+        {"_id": claim_id},
+        {"$set": upd}
+    )
 
 def get_all_policies():
     return list(policies_col.find().sort("created_at", -1))
 
 def get_all_users():
-    return list(users_col.find({}, {"password_hash": 0, "salt": 0}))
+    return list(
+        users_col.find({}, {"password_hash": 0, "salt": 0})
+    )
 
 # ---------------- Default Admin Setup ---------------- #
 def create_default_admin():
@@ -208,8 +251,7 @@ def create_default_admin():
             "salt": salt,
             "is_admin": True,
             "is_active": True,
+            "email_verified": True,   # ✅ ADMIN ALWAYS VERIFIED
             "created_at": datetime.utcnow()
         })
         print(f"[INFO] Default admin created → {admin_email} / {admin_pass}")
-    # else:
-    #     print("[INFO] Default admin already exists.")

@@ -1,52 +1,134 @@
 {% extends "base.html" %}
-
 {% block content %}
+
 <div class="container mt-5" style="max-width: 500px;">
-    <div class="card shadow-sm">
-        <div class="card-body">
-            <h4 class="card-title mb-4">
-                {% if reset %}Reset Password{% else %}Forgot Password{% endif %}
-            </h4>
+  <div class="card shadow-sm">
+    <div class="card-body">
 
-            {% with messages = get_flashed_messages(with_categories=true) %}
-              {% if messages %}
-                {% for category, message in messages %}
-                  <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
-                      {{ message }}
-                      <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-                  </div>
-                {% endfor %}
-              {% endif %}
-            {% endwith %}
+      <h4 class="card-title mb-3 text-center">
+        {% if reset %}
+          🔐 Reset Password
+        {% elif otp_sent %}
+          🔑 Verify OTP
+        {% else %}
+          🔒 Forgot Password
+        {% endif %}
+      </h4>
 
-            {% if reset %}
-            <!-- Reset password form -->
-            <form method="POST">
-                <div class="mb-3">
-                    <label for="password" class="form-label">New Password</label>
-                    <input type="password" class="form-control" name="password" required>
-                </div>
-                <div class="mb-3">
-                    <label for="confirm" class="form-label">Confirm Password</label>
-                    <input type="password" class="form-control" name="confirm" required>
-                </div>
-                <button type="submit" class="btn btn-primary w-100">Reset Password</button>
-            </form>
-            {% else %}
-            <!-- Enter email form -->
-            <form method="POST">
-                <div class="mb-3">
-                    <label for="email" class="form-label">Enter Your Email</label>
-                    <input type="email" class="form-control" name="email" required>
-                </div>
-                <button type="submit" class="btn btn-primary w-100">Continue</button>
-            </form>
-            {% endif %}
-
-            <div class="mt-3 text-center">
-                <a href="{{ url_for('login') }}">Back to Login</a>
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+          {% for category, message in messages %}
+            <div class="alert alert-{{ category }} alert-dismissible fade show">
+              {{ message }}
+              <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
             </div>
+          {% endfor %}
+        {% endif %}
+      {% endwith %}
+
+      <!-- ================= STEP 1: EMAIL ================= -->
+      {% if not otp_sent and not reset %}
+      <form method="POST">
+        <input type="hidden" name="step" value="send_otp">
+
+        <div class="mb-3">
+          <label class="form-label">Registered Email</label>
+          <input type="email" name="email" class="form-control" required>
         </div>
+
+        <button class="btn btn-primary w-100">
+          Send OTP
+        </button>
+      </form>
+      {% endif %}
+
+      <!-- ================= STEP 2: OTP ================= -->
+      {% if otp_sent %}
+      <form method="POST">
+        <input type="hidden" name="step" value="verify_otp">
+        <input type="hidden" name="email" value="{{ email }}">
+
+        <div class="mb-3">
+          <label class="form-label">Enter OTP</label>
+          <input
+            type="text"
+            name="otp"
+            class="form-control"
+            placeholder="6-digit OTP"
+            pattern="[0-9]{6}"
+            required
+          >
+          <small class="text-muted">
+            OTP valid for <strong><span id="timer">300</span></strong> seconds
+          </small>
+        </div>
+
+        <button class="btn btn-success w-100">
+          Verify OTP
+        </button>
+      </form>
+
+      <!-- RESEND OTP -->
+      <form method="POST" class="mt-2">
+        <input type="hidden" name="step" value="send_otp">
+        <input type="hidden" name="email" value="{{ email }}">
+
+        <button
+          type="submit"
+          class="btn btn-outline-secondary w-100"
+          id="resendBtn"
+          disabled
+        >
+          Resend OTP
+        </button>
+      </form>
+      {% endif %}
+
+      <!-- ================= STEP 3: RESET PASSWORD ================= -->
+      {% if reset %}
+      <form method="POST">
+        <div class="mb-3">
+          <label class="form-label">New Password</label>
+          <input type="password" name="password" class="form-control" required>
+        </div>
+
+        <div class="mb-3">
+          <label class="form-label">Confirm Password</label>
+          <input type="password" name="confirm" class="form-control" required>
+        </div>
+
+        <button class="btn btn-primary w-100">
+          Reset Password
+        </button>
+      </form>
+      {% endif %}
+
+      <div class="mt-3 text-center">
+        <a href="{{ url_for('login') }}">Back to Login</a>
+      </div>
+
     </div>
+  </div>
 </div>
+
+<!-- ================= OTP TIMER SCRIPT ================= -->
+{% if otp_sent %}
+<script>
+let timeLeft = 300;
+const timerEl = document.getElementById("timer");
+const resendBtn = document.getElementById("resendBtn");
+
+const countdown = setInterval(() => {
+  timeLeft--;
+  timerEl.textContent = timeLeft;
+
+  if (timeLeft <= 0) {
+    clearInterval(countdown);
+    resendBtn.disabled = false;
+    resendBtn.textContent = "Resend OTP";
+  }
+}, 1000);
+</script>
+{% endif %}
+
 {% endblock %}

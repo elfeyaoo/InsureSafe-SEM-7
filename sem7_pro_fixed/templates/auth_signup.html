@@ -5,58 +5,152 @@
     <div class="card shadow-sm border-0">
       <div class="card-body">
         <h5 class="card-title mb-3">Sign Up</h5>
-        <form method="post" enctype="multipart/form-data">
 
+        <form method="post" enctype="multipart/form-data">
+          <!-- 🔑 STEP CONTROL -->
+          <input type="hidden" name="step" value="{{ 'verify_otp' if otp_sent else 'send_otp' }}">
+
+          <!-- FULL NAME -->
           <div class="mb-3">
             <label class="form-label">Full Name</label>
-            <input type="text" name="name" class="form-control" required>
+            <input type="text" name="name" class="form-control"
+                   value="{{ request.form.name }}" required {% if otp_sent %}readonly{% endif %}>
           </div>
 
+          <!-- EMAIL -->
           <div class="mb-3">
             <label class="form-label">Email</label>
-            <input type="email" name="email" class="form-control" required>
+            <input type="email" name="email" class="form-control"
+                   value="{{ email or request.form.email }}" required {% if otp_sent %}readonly{% endif %}>
           </div>
 
+          <!-- PASSWORD -->
           <div class="mb-3">
             <label class="form-label">Password</label>
-            <input type="password" name="password" class="form-control" required>
+            <input type="password" name="password" class="form-control"
+                   required {% if otp_sent %}readonly{% endif %}>
           </div>
 
+          <!-- PHONE -->
           <div class="mb-3">
             <label class="form-label">Phone Number</label>
-            <input type="tel" name="phone" class="form-control" pattern="[0-9]{10}" placeholder="10-digit number" required>
+            <input type="tel" name="phone" class="form-control"
+                   pattern="[0-9]{10}" placeholder="10-digit number"
+                   value="{{ request.form.phone }}" required {% if otp_sent %}readonly{% endif %}>
           </div>
 
+          <!-- ADDRESS -->
           <div class="mb-3">
             <label class="form-label">Address</label>
-            <textarea name="address" class="form-control" rows="2" required></textarea>
+            <textarea name="address" class="form-control" rows="2"
+              {% if otp_sent %}readonly{% endif %}>{{ request.form.address }}</textarea>
           </div>
 
-          <!-- ✅ New Field: Age -->
+          <!-- AGE -->
           <div class="mb-3">
             <label class="form-label">Age</label>
-            <input type="number" name="age" class="form-control" min="18" max="100" required>
+            <input type="number" name="age" class="form-control"
+                   min="18" max="100"
+                   value="{{ request.form.age }}" required {% if otp_sent %}readonly{% endif %}>
           </div>
 
-          <!-- ✅ New Field: Annual Income -->
+          <!-- INCOME -->
           <div class="mb-3">
             <label class="form-label">Annual Income (₹)</label>
-            <input type="number" name="annual_income" class="form-control" min="0" step="10000" placeholder="e.g., 500000" required>
+            <input type="number" name="annual_income" class="form-control"
+                   min="0" step="10000"
+                   value="{{ request.form.annual_income }}" required {% if otp_sent %}readonly{% endif %}>
           </div>
 
+          <!-- ID PHOTO (ONLY STEP 1) -->
+          {% if not otp_sent %}
           <div class="mb-3">
             <label class="form-label">Upload ID Photo (used for face auth)</label>
             <input type="file" name="id_photo" class="form-control" accept="image/*" required>
           </div>
+          {% endif %}
 
-          <button class="btn btn-primary w-100">Create Account</button>
+          <!-- 🔐 OTP INPUT (STEP 2) -->
+          {% if otp_sent %}
+          <div class="mb-3">
+            <label class="form-label">Enter OTP</label>
+            <input type="text" name="otp" class="form-control" placeholder="6-digit OTP" required>
+
+            <!-- ⏳ TIMER -->
+            <small class="text-muted d-block mt-1">
+              OTP expires in <span id="otp-timer">300</span> seconds
+            </small>
+
+            <!-- 🔁 RESEND -->
+            <button type="button"
+                    id="resendBtn"
+                    class="btn btn-link p-0 mt-1"
+                    onclick="resendOtp()"
+                    disabled>
+              Resend OTP (60s)
+            </button>
+          </div>
+          {% endif %}
+
+          <!-- BUTTON -->
+          <button class="btn btn-primary w-100">
+            {{ "Verify OTP & Create Account" if otp_sent else "Send OTP" }}
+          </button>
         </form>
 
         <div class="text-center mt-3">
           <a href="{{ url_for('login') }}">Already have an account? Login</a>
         </div>
+
       </div>
     </div>
   </div>
 </div>
+
+{% if otp_sent %}
+<script>
+let otpTime = 300;      // 5 minutes
+let resendTime = 60;   // 60 seconds cooldown
+
+const timerEl = document.getElementById("otp-timer");
+const resendBtn = document.getElementById("resendBtn");
+
+// OTP countdown
+const otpInterval = setInterval(() => {
+  otpTime--;
+  if (timerEl) timerEl.innerText = otpTime;
+
+  if (otpTime <= 0) {
+    clearInterval(otpInterval);
+    alert("OTP expired. Please resend.");
+    resendBtn.disabled = false;
+    resendBtn.innerText = "Resend OTP";
+  }
+}, 1000);
+
+// Resend cooldown
+const resendInterval = setInterval(() => {
+  resendTime--;
+  resendBtn.innerText = `Resend OTP (${resendTime}s)`;
+
+  if (resendTime <= 0) {
+    resendBtn.disabled = false;
+    resendBtn.innerText = "Resend OTP";
+    clearInterval(resendInterval);
+  }
+}, 1000);
+
+function resendOtp() {
+  resendBtn.disabled = true;
+  resendBtn.innerText = "Sending...";
+
+  fetch("/auth/resend-otp", { method: "POST" })
+    .then(res => res.json())
+    .then(data => {
+      alert(data.msg);
+      resendTime = 60;
+    });
+}
+</script>
+{% endif %}
 {% endblock %}

@@ -1,7 +1,8 @@
 from flask import Flask, render_template, request, redirect, url_for, flash, session, abort, jsonify
-import os, time
+from flask_mail import Mail, Message
+import os, time, random
 from werkzeug.utils import secure_filename
-from datetime import datetime
+from datetime import datetime, timedelta
 from functools import wraps
 from itsdangerous import URLSafeTimedSerializer
 from bson.objectid import ObjectId
@@ -9,12 +10,15 @@ from werkzeug.exceptions import RequestEntityTooLarge
 import base64
 from io import BytesIO
 from PIL import Image
+from services import otp_service
+
 
 # ---- Services ----
 from services.recommender import recommend_policies
 from services.face_verify import FaceVerifier
 from services.ocr_verify import DocumentVerifier
 from services.claims_ai import ClaimsAI
+from services.otp_service import send_otp, verify_otp
 
 # ---- Database Helpers ----
 from db import (
@@ -32,9 +36,17 @@ app.secret_key = os.getenv("SECRET_KEY", "dev-secret")
 app.config["UPLOAD_FOLDER"] = "uploads"
 app.config["ID_PHOTOS"] = "id_photos"
 app.config["DEMO_MODE"] = os.getenv("DEMO_MODE", "false").lower() == "true"
-
 app.config['MAX_CONTENT_LENGTH'] = 20 * 1024 * 1024
 
+# ================= EMAIL (BREVO SMTP) =================
+app.config["MAIL_SERVER"] = "smtp-relay.brevo.com"
+app.config["MAIL_PORT"] = 587
+app.config["MAIL_USE_TLS"] = True
+app.config["MAIL_USERNAME"] = "a003a2001@smtp-brevo.com"
+app.config["MAIL_PASSWORD"] = "xsmtpsib-338ccb36a9bdc0db0df009780089229a11ec700eb5d672be1716386932f06a2a-oAwqUt78QSPdoLE2"
+app.config["MAIL_DEFAULT_SENDER"] = "insuresafe67@gmail.com"
+
+mail = Mail(app)
 
 # Serializer for token generation
 serializer = URLSafeTimedSerializer(app.secret_key)
@@ -118,136 +130,276 @@ def get_started():
 # ============================================================
 # ROUTES: AUTH
 # ============================================================
-@app.route("/auth/signup", methods=["GET","POST"])
+@app.route("/auth/signup", methods=["GET", "POST"])
 def signup():
     if request.method == "POST":
+        step = request.form.get("step", "send_otp")
+
         name = request.form.get("name","").strip()
         email = request.form.get("email","").strip().lower()
         password = request.form.get("password","")
-        id_photo = request.files.get("id_photo")
         phone = request.form.get("phone","").strip()
         address = request.form.get("address","").strip()
-        age = request.form.get("age")  # ✅ NEW
-        annual_income = request.form.get("annual_income")  # ✅ NEW
+        age = request.form.get("age")
+        annual_income = request.form.get("annual_income")
+        id_photo = request.files.get("id_photo")
 
-        if not (name and email and password and id_photo):
-            flash("All fields including ID photo are required.", "warning")
-            return redirect(url_for("signup"))
+        # ================= STEP 1: SEND OTP =================
+        if step == "send_otp":
 
-        if get_user_by_email(email):
-            flash("Email already registered.", "danger")
-            return redirect(url_for("signup"))
+            if not (name and email and password and id_photo):
+                flash("All fields including ID photo are required.", "warning")
+                return redirect(url_for("signup"))
 
-        # Save ID photo
-        id_dir = os.path.join(app.config["UPLOAD_FOLDER"], "id_photos")
-        os.makedirs(id_dir, exist_ok=True)
-        filename = secure_filename(f"{int(time.time())}_{id_photo.filename}")
-        id_photo.save(os.path.join(id_dir, filename))
-        idp_path = f"id_photos/{filename}" # relative path for DB
+            if get_user_by_email(email):
+                flash("Email already registered.", "danger")
+                return redirect(url_for("signup"))
 
-        try:
-            add_user(
-                name=name,
-                email=email,
-                password=password,
-                id_photo_path=idp_path,
-                phone=phone,
-                address=address,
-                age=int(age) if age else None,  # ✅ NEW
-                annual_income=float(annual_income) if annual_income else None,  # ✅ NEW
-                is_admin=False
+            # Save ID photo temporarily
+            id_dir = os.path.join(app.config["UPLOAD_FOLDER"], "temp_ids")
+            os.makedirs(id_dir, exist_ok=True)
+
+            filename = secure_filename(f"{int(time.time())}_{id_photo.filename}")
+            temp_path = os.path.join(id_dir, filename)
+            id_photo.save(temp_path)
+
+            # Store signup data temporarily in session
+            session["signup_data"] = {
+                "name": name,
+                "email": email,
+                "password": password,
+                "phone": phone,
+                "address": address,
+                "age": age,
+                "annual_income": annual_income,
+                "id_photo_path": temp_path
+            }
+
+            # 🔐 SEND OTP (Brevo)
+            otp_service.send_otp(mail, email, purpose="signup")
+
+            flash("OTP sent to your email.", "success")
+            return render_template(
+                "auth_signup.html",
+                otp_sent=True,
+                email=email
             )
-            flash("Signup successful. Please login.", "success")
-            return redirect(url_for("login"))
-        except Exception as e:
-            flash(f"Signup failed: {e}", "danger")
+
+        # ================= STEP 2: VERIFY OTP =================
+        elif step == "verify_otp":
+            otp = request.form.get("otp", "").strip()
+            data = session.get("signup_data")
+
+            if not data:
+                flash("Session expired. Please sign up again.", "danger")
+                return redirect(url_for("signup"))
+
+            ok, msg = otp_service.verify_otp(
+                data["email"],
+                otp,
+                purpose="signup"
+            )
+
+            if not ok:
+                flash(msg, "danger")
+                return render_template(
+                    "auth_signup.html",
+                    otp_sent=True,
+                    email=data["email"]
+                )
+
+            # Move ID photo to final folder
+            final_dir = os.path.join(app.config["UPLOAD_FOLDER"], "id_photos")
+            os.makedirs(final_dir, exist_ok=True)
+
+            final_name = os.path.basename(data["id_photo_path"])
+            final_path = os.path.join(final_dir, final_name)
+            os.rename(data["id_photo_path"], final_path)
+
+            try:
+                add_user(
+                    name=data["name"],
+                    email=data["email"],
+                    password=data["password"],
+                    id_photo_path=f"id_photos/{final_name}",
+                    phone=data["phone"],
+                    address=data["address"],
+                    age=int(data["age"]) if data["age"] else None,
+                    annual_income=float(data["annual_income"]) if data["annual_income"] else None,
+                    is_admin=False,
+                    email_verified=True   # ✅ VERIFIED VIA OTP
+                )
+
+                session.pop("signup_data", None)
+                flash("Signup successful. Please login.", "success")
+                return redirect(url_for("login"))
+
+            except Exception as e:
+                flash(f"Signup failed: {e}", "danger")
+                return redirect(url_for("signup"))
 
     return render_template("auth_signup.html")
 
-@app.route("/auth/login", methods=["GET","POST"])
+@app.route("/auth/resend-otp", methods=["POST"])
+def resend_otp():
+    data = session.get("signup_data")
+
+    if not data:
+        return jsonify({"ok": False, "msg": "Session expired"})
+
+    email = data["email"]
+
+    # 🔒 Cooldown check (60s)
+    last_sent = session.get("otp_last_sent")
+    if last_sent and time.time() - last_sent < 60:
+        return jsonify({
+            "ok": False,
+            "msg": "Please wait before resending OTP"
+        })
+
+    send_otp(email, purpose="signup")
+    session["otp_last_sent"] = time.time()
+
+    return jsonify({"ok": True, "msg": "OTP resent"})
+
+@app.route("/auth/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
-        email = request.form.get("email", "").lower()
+        email = request.form.get("email", "").strip().lower()
         password = request.form.get("password", "")
 
         user = authenticate_user(email, password)
-        if user:
-            # ✅ Check if user is active
-            if not user.get("is_active", True):
-                flash("Your account is inactive. Contact admin.", "danger")
-                return redirect(url_for("login"))
 
-            # Existing login logic
-            session["role"] = "admin" if user.get("is_admin") else "user"
-            session["user_id"] = str(user["_id"])
+        if not user:
+            flash("Invalid credentials.", "danger")
+            return redirect(url_for("login"))
 
-            if user.get("is_admin"):
-                session["face_verified"] = True
-                flash("Admin login successful.", "success")
-                return redirect(url_for("admin"))
-            else:
-                session["face_verified"] = False
-                session["pending_user_id"] = str(user["_id"])
-                flash("Password OK. Please complete face verification.", "info")
-                return redirect(url_for("face_auth"))
+        # ✅ Ensure account is active
+        if not user.get("is_active", True):
+            flash("Your account is inactive. Contact admin.", "danger")
+            return redirect(url_for("login"))
 
-        flash("Invalid credentials.", "danger")
+        # ✅ Email verification check (admins bypass)
+        if not user.get("is_admin") and not user.get("email_verified", False):
+            flash("Please verify your email before logging in.", "warning")
+            return redirect(url_for("login"))
+
+        # 🔐 Clear old session (safety)
+        session.clear()
+
+        # ---------------- LOGIN CONTINUES ----------------
+        session["role"] = "admin" if user.get("is_admin") else "user"
+        session["user_id"] = str(user["_id"])
+
+        if user.get("is_admin"):
+            session["face_verified"] = True
+            flash("Admin login successful.", "success")
+            return redirect(url_for("admin"))
+
+        # 👤 Normal user → face auth
+        session["face_verified"] = False
+        session["pending_user_id"] = str(user["_id"])
+        flash("Password OK. Please complete face verification.", "info")
+        return redirect(url_for("face_auth"))
+
     return render_template("auth_login.html")
 
 # ============================================================
 # ROUTES: FORGET PASSWORD
 # ============================================================
-@app.route("/auth/forgot", methods=["GET","POST"])
-@app.route("/auth/forgot/<token>", methods=["GET","POST"])
-def forgot(token=None):
-    if token:
-        # Reset form
-        try:
-            email = serializer.loads(token, salt="password-reset", max_age=3600)
-        except:
-            flash("The reset link is invalid or expired.", "danger")
-            return redirect(url_for("forgot"))
+@app.route("/auth/forgot", methods=["GET", "POST"])
+def forgot():
+    if request.method == "POST":
+        step = request.form.get("step", "send_otp")
+        email = request.form.get("email", "").strip().lower()
 
-        if request.method == "POST":
-            password = request.form.get("password")
-            confirm = request.form.get("confirm")
-
-            if not password or not confirm:
-                flash("Please fill in both password fields.", "warning")
-                return redirect(request.url)
-
-            if password != confirm:
-                flash("Passwords do not match.", "warning")
-                return redirect(request.url)
-
-            user = get_user_by_email(email)
-            if user:
-                users_col.update_one({"_id": user["_id"]}, {"$set": {"password": password}})
-                flash("Password reset successfully.", "success")
-                return redirect(url_for("login"))
-            else:
-                flash("User not found.", "danger")
+        # ======================
+        # STEP 1: SEND OTP
+        # ======================
+        if step == "send_otp":
+            if not email:
+                flash("Please enter your email.", "warning")
                 return redirect(url_for("forgot"))
 
-        return render_template("auth_forgot.html", reset=True, token=token, email=email)
+            user = get_user_by_email(email)
 
-    # Email input form
+            # 🔐 Security: don’t reveal if user exists
+            if user:
+                otp_service.send_otp(mail, email, purpose="forgot")
+
+            flash("If this email exists, an OTP has been sent.", "info")
+
+            return render_template(
+                "auth_forgot.html",
+                otp_sent=True,
+                email=email
+            )
+
+        # ======================
+        # STEP 2: VERIFY OTP
+        # ======================
+        elif step == "verify_otp":
+            otp = request.form.get("otp", "").strip()
+
+            ok, msg = otp_service.verify_otp(
+                email,
+                otp,
+                purpose="forgot"
+            )
+
+            if not ok:
+                flash(msg, "danger")
+                return render_template(
+                    "auth_forgot.html",
+                    otp_sent=True,
+                    email=email
+                )
+
+            # ✅ OTP VERIFIED → ALLOW PASSWORD RESET
+            session["reset_email"] = email
+            return redirect(url_for("reset_password"))
+
+    return render_template("auth_forgot.html", otp_sent=False)
+
+@app.route("/auth/reset-password", methods=["GET", "POST"])
+def reset_password():
+    email = session.get("reset_email")
+    if not email:
+        flash("Session expired. Please try again.", "danger")
+        return redirect(url_for("forgot"))
+
     if request.method == "POST":
-        email = request.form.get("email","").lower()
-        if not email:
-            flash("Please enter your email.", "warning")
-            return redirect(url_for("forgot"))
+        password = request.form.get("password")
+        confirm = request.form.get("confirm")
+
+        if not password or not confirm:
+            flash("Please fill all fields.", "warning")
+            return redirect(request.url)
+
+        if password != confirm:
+            flash("Passwords do not match.", "danger")
+            return redirect(request.url)
 
         user = get_user_by_email(email)
-        if user:
-            # generate token and redirect to reset page
-            token = serializer.dumps(email, salt="password-reset")
-            return redirect(url_for("forgot", token=token))
-        else:
-            flash(f"If {email} exists, you can reset your password.", "info")
-            return redirect(url_for("login"))
+        if not user:
+            flash("User not found.", "danger")
+            return redirect(url_for("forgot"))
 
-    return render_template("auth_forgot.html", reset=False)
+        # 🔐 Update password securely
+        pwd_hash, salt = hash_password(password)
+        users_col.update_one(
+            {"_id": user["_id"]},
+            {"$set": {
+                "password_hash": pwd_hash,
+                "salt": salt
+            }}
+        )
+
+        session.pop("reset_email", None)
+        flash("Password reset successful. Please login.", "success")
+        return redirect(url_for("login"))
+
+    return render_template("auth_reset.html", email=email)
 
 # ============================================================
 # FACE AUTH
@@ -691,6 +843,12 @@ def edit_profile():
 def admin():
     try:
         users = list(users_col.find())
+
+        # 🔐 Ensure email_verified exists (backward compatibility)
+        for u in users:
+            if "email_verified" not in u:
+                u["email_verified"] = False
+
         policy_defs = list(policies_col.find())
 
         # -------- Claims with JOIN --------
@@ -743,6 +901,20 @@ def admin():
             claims=[],
             counts={"n_users": 0, "n_up": 0, "n_c": 0}
         )
+
+@app.route("/admin/verify-email/<uid>")
+@admin_required
+def admin_verify_email(uid):
+    try:
+        users_col.update_one(
+            {"_id": ObjectId(uid)},
+            {"$set": {"email_verified": True}}
+        )
+        flash("Email marked as verified.", "success")
+    except Exception as e:
+        flash(f"Verification failed: {e}", "danger")
+
+    return redirect(url_for("admin"))
 
 @app.route("/admin/update_policy_status/<policy_id>/<status>")
 @admin_required
