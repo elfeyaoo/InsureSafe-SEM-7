@@ -1,59 +1,141 @@
 {% extends "base.html" %}
 {% block content %}
+
+{% set current_time = now if now is defined else None %}
+
 <div class="row g-3">
-  <div class="col-lg-6">
+
+  <!-- ================= YOUR POLICIES ================= -->
+  <div class="col-lg-7">
     <div class="card border-0 shadow-sm h-100">
       <div class="card-body">
         <h6 class="mb-3">Your Policies</h6>
+
         {% if policies %}
           <ul class="list-group list-group-flush">
+
             {% for up in policies %}
-            <li class="list-group-item d-flex justify-content-between align-items-center">
-  <div>
-    <div class="fw-semibold">{{ up.policy.name }}</div>
-    <div class="small text-muted">
-      Status: {{ up.status }}
-      {% if up.doc_valid %} · Verified{% else %} · Pending Verification{% endif %}
-    </div>
-  </div>
+            {% set pid = up.policy._id|string %}
+            {% set claim = claim_map.get(pid) %}
+            {% set cooldown_until = cooldown_map.get(pid) if cooldown_map is defined else None %}
+            {% set summary = claim_summary.get(pid, {}) if claim_summary is defined else {} %}
 
-  <a href="{{ url_for('apply_claim', policy_id=up.policy._id) }}"
-     class="btn btn-sm btn-outline-primary">
-     Apply for Claim
-  </a>
-</li>
+            <li class="list-group-item d-flex justify-content-between align-items-start">
+
+              <!-- ================= POLICY INFO ================= -->
+              <div class="w-100">
+                <div class="fw-semibold">{{ up.policy.name }}</div>
+
+                <div class="small text-muted">
+                  Status: {{ up.status }}
+                  {% if up.doc_valid %}
+                    · Verified
+                  {% else %}
+                    · Pending Verification
+                  {% endif %}
+                </div>
+
+                <!-- Last claim -->
+                {% if claim %}
+                <div class="small text-muted mt-1">
+                  Last claim:
+                  {% if claim.decision == "Auto-Approve" %}
+                    <span class="badge bg-success">Approved</span>
+                  {% elif claim.decision == "Manual Review" %}
+                    <span class="badge bg-warning text-dark">Manual</span>
+                  {% else %}
+                    <span class="badge bg-danger">Rejected</span>
+                  {% endif %}
+
+                  {% if claim.risk_score is not none %}
+                    · Risk {{ (claim.risk_score * 100)|round(1) }}%
+                  {% endif %}
+                  · {{ claim.created_at | datetimeformat }}
+                </div>
+                {% endif %}
+
+                <!-- Mini claim summary -->
+                {% if summary %}
+                <div class="small mt-2 text-muted">
+                  Claims:
+                  <span class="text-success">✔ {{ summary.approved or 0 }}</span>
+                  · <span class="text-warning">⏳ {{ summary.pending or 0 }}</span>
+                  · <span class="text-danger">✖ {{ summary.rejected or 0 }}</span>
+                </div>
+                {% endif %}
+              </div>
+
+              <!-- ================= CLAIM ACTION ================= -->
+              <div class="ms-3 text-end">
+
+                <!-- 🔒 BLOCK claims if policy not verified or inactive -->
+                {% if not up.doc_valid or up.status != "active" %}
+                  <span class="badge bg-secondary"
+                        title="Policy verification required before claims">
+                    Verification Pending
+                  </span>
+
+                {% elif not claim %}
+                  <a href="{{ url_for('apply_claim', policy_id=up.policy._id) }}"
+                     class="btn btn-sm btn-outline-primary">
+                    Apply
+                  </a>
+
+                {% elif claim.status == "pending" %}
+                  <span class="badge bg-warning text-dark">
+                    Claim Pending
+                  </span>
+
+                {% elif claim.status == "approved" %}
+                  <span class="badge bg-success">
+                    Approved
+                  </span>
+
+                {% elif claim.status == "rejected" %}
+                  {% if cooldown_until and current_time and cooldown_until > current_time %}
+                    <span class="badge bg-secondary">
+                      Re-apply after {{ cooldown_until.strftime('%d %b %Y') }}
+                    </span>
+                  {% else %}
+                    <a href="{{ url_for('apply_claim', policy_id=up.policy._id) }}"
+                       class="btn btn-sm btn-outline-danger">
+                      Re-Apply
+                    </a>
+                  {% endif %}
+                {% endif %}
+
+              </div>
+            </li>
             {% endfor %}
-          </ul>
-        {% else %}
-          <div class="text-muted">You haven't applied for any policies yet. <a href="{{ url_for('policies') }}">Browse policies</a></div>
-        {% endif %}
-      </div>
-    </div>
-  </div>
 
-  <div class="col-lg-6">
-    <div class="card border-0 shadow-sm h-100">
-      <div class="card-body">
-        <h6 class="mb-2">AI Claim Result</h6>
-        {% if claim_report %}
-          <div class="alert alert-secondary">
-            <div><strong>Decision:</strong> {{ claim_report.decision }}</div>
-            <div class="small text-muted">Fraud Risk: {{ (claim_report.risk_score * 100)|round(1) }}%</div>
-          </div>
-          <pre class="small mb-0">{{ claim_report.signals | tojson(indent=2) }}</pre>
+          </ul>
+
         {% else %}
-          <div class="text-muted">Submit a claim from one of your policies to see the AI assessment.</div>
+          <div class="text-muted">
+            You haven't applied for any policies yet.
+            <a href="{{ url_for('policies') }}">Browse policies</a>
+          </div>
         {% endif %}
       </div>
     </div>
   </div>
 </div>
 
+<!-- ================= RECENT CLAIMS ================= -->
 <h6 class="mt-4">Recent Claims</h6>
+
+{% if claims %}
 <div class="table-responsive">
   <table class="table table-sm align-middle">
     <thead>
-      <tr><th>ID</th><th>Policy</th><th>Amount</th><th>Risk</th><th>Decision</th><th>When</th></tr>
+      <tr>
+        <th>ID</th>
+        <th>Policy</th>
+        <th>Amount</th>
+        <th>Risk</th>
+        <th>Decision</th>
+        <th>When</th>
+      </tr>
     </thead>
     <tbody>
       {% for c in claims %}
@@ -61,12 +143,30 @@
         <td>#{{ c._id }}</td>
         <td>{{ c.policy.name }}</td>
         <td>₹{{ "{:,}".format(c.amount) }}</td>
-        <td>{{ (c.risk_score*100)|round(1) }}%</td>
-        <td>{{ c.decision }}</td>
+        <td>
+          {% if c.risk_score is not none %}
+            {{ (c.risk_score * 100)|round(1) }}%
+          {% else %}—{% endif %}
+        </td>
+        <td>
+          {% if c.decision == "Auto-Approve" %}
+            <span class="badge bg-success">Approved</span>
+          {% elif c.decision == "Manual Review" %}
+            <span class="badge bg-warning text-dark">Manual</span>
+          {% else %}
+            <span class="badge bg-danger">Rejected</span>
+          {% endif %}
+        </td>
         <td>{{ c.created_at | datetimeformat }}</td>
       </tr>
       {% endfor %}
     </tbody>
   </table>
 </div>
+{% else %}
+<div class="text-muted small">
+  No claims submitted yet.
+</div>
+{% endif %}
+
 {% endblock %}

@@ -3,25 +3,32 @@
 <h4 class="mb-3">⚙️ Admin Panel</h4>
 
 <div class="row g-3">
-  <!-- ================= STATS ================= -->
-  <div class="col-lg-4 col-md-12">
-    <div class="card border-0 shadow-sm rounded-3 p-3 h-100">
-      <div class="d-flex justify-content-around text-center">
-        <div>
-          <div class="small text-muted">👤 Users</div>
-          <div class="h5 fw-bold">{{ counts.n_users }}</div>
-        </div>
-        <div>
-          <div class="small text-muted">📄 Policies</div>
-          <div class="h5 fw-bold">{{ counts.n_up }}</div>
-        </div>
-        <div>
-          <div class="small text-muted">📝 Claims</div>
-          <div class="h5 fw-bold">{{ counts.n_c }}</div>
-        </div>
+<!-- ================= STATS (VERTICAL) ================= -->
+<div class="col-lg-4 col-md-12">
+  <div class="card border-0 shadow-sm rounded-4 h-100">
+    <div class="card-body d-flex flex-column justify-content-between px-4">
+
+      <!-- USERS -->
+      <div class="text-center py-4 border-bottom">
+        <div class="stat-label">👤 Users</div>
+        <div class="stat-number">{{ counts.n_users }}</div>
       </div>
+
+      <!-- POLICIES -->
+      <div class="text-center py-4 border-bottom">
+        <div class="stat-label">📄 Policies</div>
+        <div class="stat-number">{{ counts.n_up }}</div>
+      </div>
+
+      <!-- CLAIMS -->
+      <div class="text-center py-4">
+        <div class="stat-label">📝 Claims</div>
+        <div class="stat-number">{{ counts.n_c }}</div>
+      </div>
+
     </div>
   </div>
+</div>
 
   <!-- ================= USERS TABLE ================= -->
   <div class="col-lg-8 col-md-12">
@@ -165,6 +172,70 @@
           </td>
           <td>{{ "YOLO" if c.claim_type == "vehicle" else "Doc-AI" }}</td>
           <td>{{ c.created_at | datetimeformat }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ================= POLICY APPLICATIONS ================= -->
+<div class="card border-0 shadow-sm rounded-3 mt-4">
+  <div class="card-header bg-warning text-dark fw-bold">
+    📑 Policy Applications (Document Review)
+  </div>
+
+  <div class="card-body table-responsive">
+    <table class="table table-hover align-middle">
+      <thead>
+        <tr>
+          <th>User</th>
+          <th>Policy</th>
+          <th>Status</th>
+          <th>Documents</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+
+      <tbody>
+        {% for up in user_policies %}
+        <tr>
+          <td>
+            {{ up.user.name }}
+            <div class="small text-muted">{{ up.user.email }}</div>
+          </td>
+
+          <td>
+            {{ up.policy.name }}
+            <div class="small text-muted">{{ up.policy.category }}</div>
+          </td>
+
+          <td>
+            {% if up.status == "active" %}
+              <span class="badge bg-success">Active</span>
+            {% else %}
+              <span class="badge bg-warning text-dark">Pending</span>
+            {% endif %}
+          </td>
+
+          <td>
+            {% if up.doc_valid %}
+              <span class="badge bg-success">✔ Verified</span>
+            {% else %}
+              <span class="badge bg-danger">❌ Mismatch</span>
+            {% endif %}
+          </td>
+
+          <td>
+            {% if not up.doc_valid %}
+              <a href="{{ url_for('admin_verify_policy', user_policy_id=up._id|string) }}"
+                 class="btn btn-sm btn-success">
+                Approve
+              </a>
+            {% else %}
+              —
+            {% endif %}
+          </td>
         </tr>
         {% endfor %}
       </tbody>

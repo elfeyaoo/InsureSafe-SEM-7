@@ -2,7 +2,7 @@
 import os, hashlib, hmac, secrets
 from pymongo import MongoClient
 from bson.objectid import ObjectId
-from datetime import datetime
+from datetime import datetime, timedelta   # ✅ timedelta needed
 
 # ---------------- MongoDB Connection ---------------- #
 MONGO_URI = os.environ.get("MONGO_URI", "mongodb://localhost:27017/")
@@ -41,7 +41,7 @@ def init_db():
 
     # CLAIMS
     claims_col.create_index("created_at")
-    claims_col.create_index("user_id")
+    claims_col.create_index([("user_id", 1), ("policy_id", 1)])
 
     # OTP (🔥 IMPORTANT)
     otp_col.create_index("email")
@@ -82,8 +82,7 @@ def add_user(
         "email_verified": email_verified,   # 🔐 IMPORTANT
         "created_at": datetime.utcnow()
     }
-    result = users_col.insert_one(user)
-    return str(result.inserted_id)
+    return str(users_col.insert_one(user).inserted_id)
 
 def get_user_by_email(email):
     return users_col.find_one({"email": email})
@@ -95,11 +94,7 @@ def get_user_by_id(user_id):
 
 def authenticate_user(email, password):
     user = get_user_by_email(email)
-    if user and verify_password(
-        user["password_hash"],
-        user["salt"],
-        password
-    ):
+    if user and verify_password(user["password_hash"], user["salt"], password):
         return user
     return None
 
@@ -223,26 +218,42 @@ def db_update_claim_status(claim_id, status, decision=None):
     if decision is not None:
         upd["decision"] = decision
 
-    claims_col.update_one(
-        {"_id": claim_id},
-        {"$set": upd}
-    )
+    claims_col.update_one({"_id": claim_id}, {"$set": upd})
 
+# --------------------------------------------------
+# 🔒 CLAIM COOLDOWN CHECK (NEW – IMPORTANT)
+# --------------------------------------------------
+def has_recent_claim(user_id, policy_id, days=30):
+    """
+    Returns True if a claim exists for this policy
+    within the last `days`
+    """
+    if isinstance(user_id, str):
+        user_id = ObjectId(user_id)
+    if isinstance(policy_id, str):
+        policy_id = ObjectId(policy_id)
+
+    since = datetime.utcnow() - timedelta(days=days)
+
+    return claims_col.find_one({
+        "user_id": user_id,
+        "policy_id": policy_id,
+        "created_at": {"$gte": since}
+    }) is not None
+
+# ---------------- Admin Helpers ---------------- #
 def get_all_policies():
     return list(policies_col.find().sort("created_at", -1))
 
 def get_all_users():
-    return list(
-        users_col.find({}, {"password_hash": 0, "salt": 0})
-    )
+    return list(users_col.find({}, {"password_hash": 0, "salt": 0}))
 
 # ---------------- Default Admin Setup ---------------- #
 def create_default_admin():
     admin_email = "admin@mail.com"
     admin_pass = "admin123"
 
-    existing_admin = users_col.find_one({"email": admin_email})
-    if not existing_admin:
+    if not users_col.find_one({"email": admin_email}):
         pwd_hash, salt = hash_password(admin_pass)
         users_col.insert_one({
             "name": "System Admin",

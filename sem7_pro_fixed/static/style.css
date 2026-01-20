@@ -1,24 +1,168 @@
-/* Custom styles for modern look */
-body { background: #f7f9fc; color: #333; }
-.navbar-brand { font-size: 1.25rem; }
-.hero { padding: 4rem 0; background: linear-gradient(180deg, #ffffff 0%, #f1f6ff 100%); border-radius: .5rem; box-shadow: 0 6px 20px rgba(20,40,100,0.04); }
-.card-modern { border: none; border-radius: 12px; box-shadow: 0 6px 30px rgba(20,40,80,0.06); }
-.btn-primary { background-image: linear-gradient(90deg,#3b82f6,#06b6d4); border: none; }
-.form-control:focus { box-shadow: none; border-color: #06b6d4; }
-.stat { font-weight:700; font-size:1.5rem; }
-small.muted { color:#6c757d; }
+/* ===================================================== */
+/* BASE THEME */
+/* ===================================================== */
+body {
+  background: #f7f9fc;
+  color: #333;
+  font-family: "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
+}
 
-/* Enhanced visuals */
+.navbar-brand {
+  font-size: 1.35rem;
+  font-weight: 700;
+}
+
+/* ===================================================== */
+/* HERO / LANDING */
+/* ===================================================== */
+.hero {
+  padding: 4rem 0;
+  background: linear-gradient(180deg, #ffffff 0%, #f1f6ff 100%);
+  border-radius: 1rem;
+  box-shadow: 0 6px 20px rgba(20, 40, 100, 0.04);
+}
+
+/* ===================================================== */
+/* CARDS */
+/* ===================================================== */
+.card {
+  border-radius: 1.2rem;
+}
+
+.card-modern {
+  border: none;
+  border-radius: 1.2rem;
+  box-shadow: 0 6px 30px rgba(20, 40, 80, 0.06);
+}
+
+.card.glass {
+  backdrop-filter: blur(6px);
+  background: rgba(255, 255, 255, 0.65);
+}
+
+/* ===================================================== */
+/* BUTTONS */
+/* ===================================================== */
+.btn {
+  border-radius: 1rem;
+  font-weight: 600;
+}
+
+.btn-lg {
+  border-radius: 1.2rem;
+}
+
+.btn-primary {
+  background-image: linear-gradient(90deg, #3b82f6, #06b6d4);
+  border: none;
+}
+
+.btn-primary:hover {
+  opacity: 0.95;
+}
+
+/* ===================================================== */
+/* FORMS */
+/* ===================================================== */
+.form-control {
+  border-radius: 0.8rem;
+}
+
+.form-control:focus {
+  box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.25);
+  border-color: #06b6d4;
+}
+
+/* ===================================================== */
+/* ADMIN STATS (IMPORTANT FIX) */
+/* ===================================================== */
+
+/* Stat label (Users / Policies / Claims) */
+.stat-label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #6b7280; /* slate */
+  margin-bottom: 0.4rem;
+}
+
+/* Stat number (big bold count) */
+.stat-number {
+  font-size: 2.8rem;
+  font-weight: 800;
+  line-height: 1;
+  color: #111827; /* near-black */
+}
+
+/* Optional color variants */
+.stat-number.users { color: #2563eb; }
+.stat-number.policies { color: #7c3aed; }
+.stat-number.claims { color: #dc2626; }
+
+/* Hover polish */
+.card:hover .stat-number {
+  transform: scale(1.05);
+  transition: 0.2s ease;
+}
+
+/* ===================================================== */
+/* TABLES */
+/* ===================================================== */
+.table {
+  font-size: 0.92rem;
+}
+
+.table thead th {
+  font-weight: 600;
+  text-transform: uppercase;
+  font-size: 0.75rem;
+  letter-spacing: 0.06em;
+}
+
+.table-hover tbody tr:hover {
+  background-color: #f1f5ff;
+}
+
+/* ===================================================== */
+/* BADGES */
+/* ===================================================== */
+.badge {
+  padding: 0.45em 0.65em;
+  font-size: 0.72rem;
+  border-radius: 0.6rem;
+  font-weight: 600;
+}
+
+/* ===================================================== */
+/* FEATURE BOXES */
+/* ===================================================== */
+.feature-box {
+  transition: transform 0.3s ease;
+}
+
+.feature-box:hover {
+  transform: translateY(-6px);
+}
+
+.feature-img {
+  object-fit: cover;
+  border-radius: 10px;
+  height: 180px;
+  width: 100%;
+}
+
+/* ===================================================== */
+/* BACKGROUND UTIL */
+/* ===================================================== */
 .bg-gradient {
   background: linear-gradient(135deg, #f8fbff 0%, #eef5ff 100%);
   min-height: 100vh;
 }
-.card.glass {
-  backdrop-filter: blur(6px);
-  background: rgba(255,255,255,0.6);
+
+/* ===================================================== */
+/* SMALL TEXT */
+/* ===================================================== */
+small.muted {
+  color: #6c757d;
 }
-.card, .btn { border-radius: 1rem; }
-.btn-lg { border-radius: 1.2rem; }
-input.form-control:focus { box-shadow: 0 0 0 .2rem rgba(13,110,253,.25); }
-.feature-box:hover { transform: translateY(-5px); transition: 0.3s; }
-.feature-img { object-fit: cover; border-radius: 8px; height: 180px; width: 100%; }

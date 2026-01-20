@@ -11,6 +11,7 @@ import base64
 from io import BytesIO
 from PIL import Image
 from services import otp_service
+from bson import ObjectId
 
 
 # ---- Services ----
@@ -25,7 +26,7 @@ from db import (
     init_db, add_user, authenticate_user, get_user_by_id, get_user_by_email,
     add_policy, get_policy_by_id, assign_policy_to_user, get_user_policies,
     update_user_policy_status, add_claim, db_update_claim_status, toggle_user_active,
-    get_all_users, get_all_policies, users_col, claims_col, policies_col
+    get_all_users, get_all_policies, users_col, claims_col, policies_col, user_policies_col
 )
 
 # ============================================================
@@ -672,28 +673,77 @@ def apply_policy(pid):
 # ============================================================
 # DASHBOARD & CLAIMS
 # ============================================================
-@app.route("/dashboard", methods=["GET","POST"])
+from datetime import datetime, timedelta
+from bson import ObjectId
+
+@app.route("/dashboard")
 @login_required
 def dashboard():
     uid = session["user_id"]
-    mypol = get_user_policies(uid)
-    claims = list(claims_col.aggregate([
-    {"$match": {"user_id": ObjectId(uid)}},
-    {"$lookup": {
-        "from": "policies",
-        "localField": "policy_id",
-        "foreignField": "_id",
-        "as": "policy"
-    }},
-    {"$unwind": "$policy"},
-    {"$sort": {"created_at": -1}}
-]))
+    now = datetime.utcnow()
 
+    # ----------------------------
+    # User policies
+    # ----------------------------
+    policies = get_user_policies(uid)
+
+    # ----------------------------
+    # Claims with policy join
+    # ----------------------------
+    claims = list(claims_col.aggregate([
+        {"$match": {"user_id": ObjectId(uid)}},
+        {"$lookup": {
+            "from": "policies",
+            "localField": "policy_id",
+            "foreignField": "_id",
+            "as": "policy"
+        }},
+        {"$unwind": "$policy"},
+        {"$sort": {"created_at": -1}}
+    ]))
+
+    # ----------------------------
+    # Latest claim + cooldown map
+    # ----------------------------
+    claim_map = {}
+    cooldown_map = {}
+
+    # ----------------------------
+    # Mini claim summary per policy
+    # ----------------------------
+    claim_summary = {}
+
+    for c in claims:
+        pid = str(c["policy_id"])
+
+        # Init summary
+        if pid not in claim_summary:
+            claim_summary[pid] = {
+                "approved": 0,
+                "pending": 0,
+                "rejected": 0
+            }
+
+        status = c.get("status")
+        if status in claim_summary[pid]:
+            claim_summary[pid][status] += 1
+
+        # Latest claim per policy
+        if pid not in claim_map:
+            claim_map[pid] = c
+
+            # Cooldown only if rejected
+            if status == "rejected":
+                cooldown_map[pid] = c["created_at"] + timedelta(days=30)
 
     return render_template(
         "dashboard.html",
-        policies=mypol,
-        claims=claims
+        policies=policies,
+        claims=claims,
+        claim_map=claim_map,
+        claim_summary=claim_summary,   # ✅ NEW
+        cooldown_map=cooldown_map,     # ✅ FIXED
+        now=now                        # ✅ FIXED
     )
 
 # ============================================================
@@ -706,46 +756,91 @@ def apply_claim(policy_id):
     if not policy:
         abort(404)
 
+    claim_type = request.args.get("type", "vehicle")
     report = None
 
     if request.method == "POST":
-        stage = request.form.get("stage")  # 🔥 CRITICAL
+        claim_type = request.form.get("claim_type")
 
-        # =========================
-        # STAGE 1: IMAGE → AI ESTIMATE
-        # =========================
-        if stage == "estimate":
+        # =====================================================
+        # 🚗 VEHICLE CLAIM
+        # =====================================================
+        if claim_type == "vehicle":
+            stage = request.form.get("stage")
+
+            # ---------- STAGE 1: ESTIMATE ----------
+            if stage == "estimate":
+                files = request.files.getlist("claim_files")
+
+                if not files or not files[0].filename:
+                    flash("Please upload at least one damage image.", "warning")
+                    return redirect(request.url)
+
+                image_paths = []
+                c_dir = os.path.join(app.config["UPLOAD_FOLDER"], "claims")
+                os.makedirs(c_dir, exist_ok=True)
+
+                for f in files:
+                    path = os.path.join(
+                        c_dir,
+                        secure_filename(f"{int(time.time())}_{f.filename}")
+                    )
+                    f.save(path)
+                    image_paths.append(path)
+
+                report = claims_ai.evaluate_vehicle_damage(
+                    image_paths=image_paths,
+                    vehicle_type=policy.get("category", "").lower()
+                )
+
+            # ---------- STAGE 2: BARGAIN ----------
+            elif stage == "bargain":
+                ai_estimate = float(request.form.get("ai_estimate", 0))
+                claim_amount = float(request.form.get("claim_amount", 0))
+
+                report = claims_ai.evaluate_bargain(ai_estimate, claim_amount)
+
+                add_claim(
+                    session["user_id"],
+                    policy_id,
+                    claim_amount,
+                    status="pending",
+                    risk_score=report["risk_score"],
+                    decision=report["decision"],
+                    claim_type="vehicle"
+                )
+
+                flash("Vehicle claim submitted successfully.", "success")
+
+        # =====================================================
+        # 📄 DOCUMENT CLAIM
+        # =====================================================
+        elif claim_type == "document":
             files = request.files.getlist("claim_files")
+            claim_amount = float(request.form.get("claim_amount", 0))
 
-            if not files or not files[0].filename:
-                flash("Please upload a damage image.", "warning")
+            if not files:
+                flash("Please upload claim documents.", "warning")
                 return redirect(request.url)
 
+            file_paths = []
             c_dir = os.path.join(app.config["UPLOAD_FOLDER"], "claims")
             os.makedirs(c_dir, exist_ok=True)
 
-            f = files[0]
-            image_path = os.path.join(
-                c_dir,
-                secure_filename(f"{int(time.time())}_{f.filename}")
-            )
-            f.save(image_path)
+            for f in files:
+                path = os.path.join(
+                    c_dir,
+                    secure_filename(f"{int(time.time())}_{f.filename}")
+                )
+                f.save(path)
+                file_paths.append(path)
 
-            report = claims_ai.evaluate_vehicle_damage(
-                image_path=image_path,
-                vehicle_type=policy.get("category", "").lower()
-            )
-
-        # =========================
-        # STAGE 2: BARGAIN → FINAL DECISION
-        # =========================
-        elif stage == "bargain":
-            ai_estimate = float(request.form.get("ai_estimate", 0))
-            claim_amount = float(request.form.get("claim_amount", 0))
-
-            report = claims_ai.evaluate_bargain(
-                ai_estimate=ai_estimate,
-                user_amount=claim_amount
+            report = claims_ai.evaluate(
+                files=file_paths,
+                metadata={
+                    "claim_amount": claim_amount,
+                    "policy_sum_insured": policy.get("sum_insured", 100000)
+                }
             )
 
             add_claim(
@@ -753,20 +848,18 @@ def apply_claim(policy_id):
                 policy_id,
                 claim_amount,
                 status="pending",
-                risk_score=report.get("risk_score"),
-                decision=report.get("decision"),
-                claim_type="vehicle"
+                risk_score=report["risk_score"],
+                decision=report["decision"],
+                claim_type="document"
             )
 
-            flash("Vehicle claim submitted successfully.", "success")
-
-        else:
-            flash("Invalid claim stage.", "danger")
+            flash("Document claim submitted successfully.", "success")
 
     return render_template(
         "apply_claim.html",
         policy=policy,
-        report=report
+        report=report,
+        claim_type=claim_type
     )
 
 # ============================================================
@@ -844,14 +937,12 @@ def admin():
     try:
         users = list(users_col.find())
 
-        # 🔐 Ensure email_verified exists (backward compatibility)
         for u in users:
             if "email_verified" not in u:
                 u["email_verified"] = False
 
         policy_defs = list(policies_col.find())
 
-        # -------- Claims with JOIN --------
         enriched_claims = list(claims_col.aggregate([
             {
                 "$lookup": {
@@ -874,9 +965,31 @@ def admin():
             { "$sort": { "created_at": -1 } }
         ]))
 
-        # Ensure claim_type exists
         for c in enriched_claims:
             c.setdefault("claim_type", "normal")
+
+        # ✅ USER POLICIES (DOCUMENT REVIEW)
+        user_policies = list(user_policies_col.aggregate([
+            {
+                "$lookup": {
+                    "from": "users",
+                    "localField": "user_id",
+                    "foreignField": "_id",
+                    "as": "user"
+                }
+            },
+            { "$unwind": "$user" },
+            {
+                "$lookup": {
+                    "from": "policies",
+                    "localField": "policy_id",
+                    "foreignField": "_id",
+                    "as": "policy"
+                }
+            },
+            { "$unwind": "$policy" },
+            { "$sort": { "applied_at": -1 } }
+        ]))
 
         counts = {
             "n_users": users_col.count_documents({}),
@@ -889,6 +1002,7 @@ def admin():
             users=users,
             policy_defs=policy_defs,
             claims=enriched_claims,
+            user_policies=user_policies,
             counts=counts
         )
 
@@ -899,10 +1013,11 @@ def admin():
             users=[],
             policy_defs=[],
             claims=[],
+            user_policies=[],
             counts={"n_users": 0, "n_up": 0, "n_c": 0}
         )
 
-@app.route("/admin/verify-email/<uid>")
+@app.route("/admin/verify_email/<uid>")
 @admin_required
 def admin_verify_email(uid):
     try:
@@ -910,7 +1025,7 @@ def admin_verify_email(uid):
             {"_id": ObjectId(uid)},
             {"$set": {"email_verified": True}}
         )
-        flash("Email marked as verified.", "success")
+        flash("User email verified successfully.", "success")
     except Exception as e:
         flash(f"Verification failed: {e}", "danger")
 
@@ -949,6 +1064,21 @@ def update_claim_status(claim_id, status):
 
     except Exception as e:
         flash(f"Failed to update claim: {e}", "danger")
+
+    return redirect(url_for("admin"))
+
+@app.route("/admin/verify_policy/<user_policy_id>")
+@admin_required
+def admin_verify_policy(user_policy_id):
+    try:
+        update_user_policy_status(
+            user_policy_id=user_policy_id,
+            status="active",
+            doc_valid=True
+        )
+        flash("Policy documents verified and policy activated.", "success")
+    except Exception as e:
+        flash(f"Policy verification failed: {e}", "danger")
 
     return redirect(url_for("admin"))
 
