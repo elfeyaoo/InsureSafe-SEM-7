@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block content %}
+
+<h4 class="mb-3">📂 Uploaded Documents</h4>
+
+{% if docs %}
+  <div class="list-group">
+    {% for key, path in docs.items() %}
+      <a href="{{ url_for('admin_files', filename=path) }}"
+         target="_blank"
+         class="list-group-item list-group-item-action">
+        📄 {{ key.replace('_',' ').title() }}
+      </a>
+    {% endfor %}
+  </div>
+{% else %}
+  <p class="text-muted">No documents uploaded.</p>
+{% endif %}
+
+<a href="{{ url_for('admin') }}" class="btn btn-secondary mt-3">
+  ⬅ Back to Admin Panel
+</a>
+
+{% endblock %}

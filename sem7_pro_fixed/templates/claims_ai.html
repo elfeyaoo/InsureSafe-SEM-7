@@ -5,47 +5,146 @@
     <div class="card shadow-sm border-0">
       <div class="card-body">
         <h5 class="card-title">AI-Assisted Claims Processing</h5>
+
         <form method="post" enctype="multipart/form-data">
+
+          <!-- POLICY VEHICLE TYPE (READ-ONLY) -->
+          {% if policy.category in ["Car", "Bike"] %}
+          <div class="mb-3">
+            <label class="form-label">Vehicle Type (From Policy)</label>
+            <input type="text"
+                   class="form-control"
+                   value="{{ policy.category }}"
+                   readonly>
+          </div>
+          {% endif %}
+
+          <!-- CLAIM TYPE -->
+          <div class="mb-3">
+            <label class="form-label">Claim Type</label>
+            <select name="claim_type"
+                    id="claimType"
+                    class="form-select"
+                    required>
+              <option value="">Select Claim Type</option>
+
+              {% if policy.category in ["Car", "Bike"] %}
+              <option value="vehicle">🚗 Vehicle Damage Claim</option>
+              {% endif %}
+
+              <option value="document">📄 Document-based Claim</option>
+            </select>
+          </div>
+
+          <!-- CLAIM AMOUNT -->
           <div class="mb-3">
             <label class="form-label">Claim Amount (₹)</label>
-            <input type="number" name="claim_amount" class="form-control" required>
+            <input type="number"
+                   name="claim_amount"
+                   class="form-control"
+                   required>
           </div>
+
+          <!-- SUM INSURED -->
           <div class="mb-3">
             <label class="form-label">Policy Sum Insured (₹)</label>
-            <input type="number" name="sum_insured" class="form-control" required>
+            <input type="number"
+                   name="sum_insured"
+                   class="form-control"
+                   value="{{ policy.sum_insured }}"
+                   readonly>
           </div>
+
+          <!-- FILE UPLOAD -->
           <div class="mb-3">
-            <label class="form-label">Upload Claim Files (images/PDF)</label>
-            <input type="file" name="claim_files" class="form-control" multiple>
+            <label class="form-label">Upload Claim Files</label>
+            <input type="file"
+                   name="claim_files"
+                   id="claimFiles"
+                   class="form-control"
+                   multiple
+                   accept="image/*,.pdf">
+            <small id="fileHint" class="text-muted">
+              Select claim type to see allowed uploads.
+            </small>
           </div>
-          <button class="btn btn-primary w-100">Assess Claim</button>
+
+          <button class="btn btn-primary w-100">
+            Assess Claim
+          </button>
         </form>
       </div>
     </div>
   </div>
+
+  <!-- ================= ASSESSMENT ================= -->
   <div class="col-lg-7">
     <h5 class="mb-3">Assessment</h5>
+
     {% if report %}
       <div class="card border-0 shadow-sm mb-3">
         <div class="card-body">
           <div class="d-flex justify-content-between align-items-center">
             <div>
-              <div class="fw-bold">Decision: {{ report.decision }}</div>
-              <div class="text-muted">Fraud Risk: {{ (report.risk_score * 100)|round(1) }}%</div>
+              <div class="fw-bold">
+                Decision: {{ report.decision }}
+              </div>
+              <div class="text-muted">
+                Fraud Risk: {{ (report.risk_score * 100)|round(1) }}%
+              </div>
             </div>
-            <span class="badge {% if report.decision == 'Auto-Approve' %}bg-success{% elif report.decision == 'Manual Review' %}bg-warning text-dark{% else %}bg-danger{% endif %} p-2">{{ report.decision }}</span>
+            <span class="badge
+              {% if report.decision == 'Auto-Approve' %}
+                bg-success
+              {% elif report.decision == 'Manual Review' %}
+                bg-warning text-dark
+              {% else %}
+                bg-danger
+              {% endif %}
+              p-2">
+              {{ report.decision }}
+            </span>
           </div>
         </div>
       </div>
+
       <div class="card border-0 shadow-sm">
         <div class="card-body">
           <h6 class="mb-2">Signals</h6>
-          <pre class="small mb-0">{{ report.signals | tojson(indent=2) }}</pre>
+          <pre class="small mb-0">
+{{ report.signals | tojson(indent=2) }}
+          </pre>
         </div>
       </div>
     {% else %}
-      <div class="text-muted">Enter details and upload files to get an assessment.</div>
+      <div class="text-muted">
+        Enter details and upload files to get an assessment.
+      </div>
     {% endif %}
   </div>
 </div>
+
+<!-- ================= UI LOGIC ================= -->
+<script>
+const claimType = document.getElementById("claimType");
+const fileInput = document.getElementById("claimFiles");
+const hint = document.getElementById("fileHint");
+
+claimType.addEventListener("change", function () {
+  if (this.value === "vehicle") {
+    fileInput.accept = "image/*";
+    hint.innerText =
+      "🚗 Upload ONLY vehicle damage images (no PDFs).";
+  } else if (this.value === "document") {
+    fileInput.accept = "image/*,.pdf";
+    hint.innerText =
+      "📄 Upload policy documents / reports only.";
+  } else {
+    fileInput.accept = "image/*,.pdf";
+    hint.innerText =
+      "Select claim type to see allowed uploads.";
+  }
+});
+</script>
+
 {% endblock %}

@@ -11,10 +11,17 @@
              src="{{ url_for('uploaded_file', filename=user.id_photo_path) }}" 
              class="rounded-circle mb-3" width="120" height="120" 
              style="object-fit:cover">
+
         <h6 class="fw-bold" id="profileName">{{ user.name }}</h6>
         <p class="text-muted small mb-1" id="profileEmail">{{ user.email }}</p>
         <p class="text-muted small mb-1" id="profilePhone">{{ user.phone or '' }}</p>
         <p class="text-muted small mb-1" id="profileAddress">{{ user.address or '' }}</p>
+
+        <!-- 🔥 SHOW INCOME -->
+        <p class="text-muted small mb-1">
+          Income: ₹<span id="profileIncome">{{ user.annual_income or 0 }}</span>
+        </p>
+
         <span class="badge {{ 'bg-success' if user.is_active else 'bg-secondary' }}">
           {{ 'Active' if user.is_active else 'Inactive' }}
         </span>
@@ -34,7 +41,11 @@
         <div class="table-responsive">
           <table class="table table-sm align-middle">
             <thead class="table-light">
-              <tr><th>Policy</th><th>Status</th><th>Applied At</th></tr>
+              <tr>
+                <th>Policy</th>
+                <th>Status</th>
+                <th>Applied At</th>
+              </tr>
             </thead>
             <tbody>
               {% for p in policies %}
@@ -62,34 +73,55 @@
   </div>
 </div>
 
-<!-- Edit Profile Form -->
+<!-- ================= EDIT PROFILE ================= -->
 <div class="row g-3 mt-3">
   <div class="col-12">
     <div class="card border-0 shadow-sm">
       <div class="card-body">
         <h6 class="mb-3">✏️ Edit Profile</h6>
+
         <form id="editProfileForm" enctype="multipart/form-data">
           <div class="mb-2">
             <label class="form-label">Name</label>
             <input type="text" name="name" class="form-control" value="{{ user.name }}" required>
           </div>
+
           <div class="mb-2">
             <label class="form-label">Email</label>
             <input type="email" name="email" class="form-control" value="{{ user.email }}" required>
           </div>
+
           <div class="mb-2">
             <label class="form-label">Phone</label>
             <input type="text" name="phone" class="form-control" value="{{ user.phone or '' }}">
           </div>
+
           <div class="mb-2">
             <label class="form-label">Address</label>
             <textarea name="address" class="form-control">{{ user.address or '' }}</textarea>
           </div>
+
+          <!-- 🔥 NEW INCOME FIELD -->
+          <div class="mb-2">
+            <label class="form-label">Annual Income (₹)</label>
+            <input type="number" name="annual_income"
+                   class="form-control"
+                   min="0"
+                   value="{{ user.annual_income or 0 }}"
+                   required>
+            <small class="text-muted">
+              Update income to become eligible for policy applications.
+            </small>
+          </div>
+
           <div class="mb-2">
             <label class="form-label">ID Photo</label>
             <input type="file" name="id_photo" class="form-control">
           </div>
-          <button type="submit" class="btn btn-primary mt-2">Update Profile</button>
+
+          <button type="submit" class="btn btn-primary mt-2">
+            Update Profile
+          </button>
         </form>
       </div>
     </div>
@@ -101,24 +133,32 @@ document.getElementById("editProfileForm").addEventListener("submit", async func
     e.preventDefault();
     let form = e.target;
     let data = new FormData(form);
-    let res = await fetch("{{ url_for('edit_profile') }}", {method:"POST", body:data});
+
+    let res = await fetch("{{ url_for('edit_profile') }}", {
+        method: "POST",
+        body: data
+    });
+
     let result = await res.json();
 
     if(result.status === "success"){
         alert(result.message);
+
         document.getElementById("profileName").innerText = result.user.name;
         document.getElementById("profileEmail").innerText = result.user.email;
         document.getElementById("profilePhone").innerText = result.user.phone || '';
         document.getElementById("profileAddress").innerText = result.user.address || '';
+        document.getElementById("profileIncome").innerText = result.user.annual_income || 0;
 
         if(result.user.id_photo_path){
-            // Force reload the image to avoid caching issues
-            document.getElementById("profilePhoto").src = 
-                "{{ url_for('uploaded_file', filename='') }}" + result.user.id_photo_path + "?t=" + Date.now();
+            document.getElementById("profilePhoto").src =
+              "{{ url_for('uploaded_file', filename='') }}" +
+              result.user.id_photo_path + "?t=" + Date.now();
         }
     } else {
         alert(result.message);
     }
 });
 </script>
+
 {% endblock %}

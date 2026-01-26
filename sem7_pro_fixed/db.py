@@ -76,7 +76,7 @@ def add_user(
         "phone": phone,
         "address": address,
         "age": int(age) if age else None,
-        "annual_income": int(annual_income) if annual_income else None,
+        "annual_income": int(annual_income) if annual_income is not None else 0,
         "is_admin": is_admin,
         "is_active": True,
         "email_verified": email_verified,   # 🔐 IMPORTANT
@@ -191,7 +191,8 @@ def add_claim(
     status="pending",
     risk_score=None,
     decision=None,
-    claim_type=None
+    claim_type=None,
+    uploaded_docs=None   # ✅ ADD THIS
 ):
     if isinstance(user_id, str):
         user_id = ObjectId(user_id)
@@ -206,8 +207,10 @@ def add_claim(
         "risk_score": risk_score,
         "decision": decision,
         "claim_type": claim_type or "normal",
+        "uploaded_docs": uploaded_docs or [],   # ✅ STORE FILES
         "created_at": datetime.utcnow()
     }
+
     return claims_col.insert_one(record).inserted_id
 
 def db_update_claim_status(claim_id, status, decision=None):

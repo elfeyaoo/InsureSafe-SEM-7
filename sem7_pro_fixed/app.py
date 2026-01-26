@@ -26,7 +26,7 @@ from db import (
     init_db, add_user, authenticate_user, get_user_by_id, get_user_by_email,
     add_policy, get_policy_by_id, assign_policy_to_user, get_user_policies,
     update_user_policy_status, add_claim, db_update_claim_status, toggle_user_active,
-    get_all_users, get_all_policies, users_col, claims_col, policies_col, user_policies_col
+    get_all_users, get_all_policies, hash_password, users_col, claims_col, policies_col, user_policies_col
 )
 
 # ============================================================
@@ -44,7 +44,7 @@ app.config["MAIL_SERVER"] = "smtp-relay.brevo.com"
 app.config["MAIL_PORT"] = 587
 app.config["MAIL_USE_TLS"] = True
 app.config["MAIL_USERNAME"] = "a003a2001@smtp-brevo.com"
-app.config["MAIL_PASSWORD"] = "xsmtpsib-338ccb36a9bdc0db0df009780089229a11ec700eb5d672be1716386932f06a2a-oAwqUt78QSPdoLE2"
+app.config["MAIL_PASSWORD"] = "xsmtpsib-338ccb36a9bdc0db0df009780089229a11ec700eb5d672be1716386932f06a2a-v7dHZxhYcXxD1Io4"
 app.config["MAIL_DEFAULT_SENDER"] = "insuresafe67@gmail.com"
 
 mail = Mail(app)
@@ -109,12 +109,38 @@ from flask import send_from_directory
 
 @app.route('/uploads/<path:filename>')
 def uploaded_file(filename):
-    return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
+    return send_from_directory(app.config['UPLOAD_FOLDER'], filename, as_attachment=False)
 
 @app.errorhandler(RequestEntityTooLarge)
 def handle_large_file(e):
     return "Uploaded image is too large", 413
 
+@app.route("/admin/files/<path:filename>")
+@admin_required
+@login_required
+def admin_files(filename):
+    # 🔥 FIX: normalize Windows paths
+    filename = filename.replace("\\", "/")
+
+    return send_from_directory(
+        app.config["UPLOAD_FOLDER"],
+        filename,
+        as_attachment=False
+    )
+
+@app.route("/admin/policy-docs/<user_policy_id>")
+@login_required
+@admin_required
+def admin_view_policy_docs(user_policy_id):
+    up = user_policies_col.find_one({"_id": ObjectId(user_policy_id)})
+
+    if not up:
+        abort(404)
+
+    return render_template(
+        "admin_policy_docs.html",
+        docs=up.get("uploaded_docs", {})
+    )
 
 # ============================================================
 # ROUTES: INDEX
@@ -400,7 +426,7 @@ def reset_password():
         flash("Password reset successful. Please login.", "success")
         return redirect(url_for("login"))
 
-    return render_template("auth_reset.html", email=email)
+    return render_template("auth_forgot.html", reset=True, email=email)
 
 # ============================================================
 # FACE AUTH
@@ -414,48 +440,74 @@ def face_auth():
     result = None
 
     if request.method == "POST":
-        captured_image = request.form.get("captured_image")  # Base64 webcam string
+        captured_image = request.form.get("captured_image")
 
-        if captured_image:
+        if not captured_image:
+            flash("Camera image not captured.", "warning")
+            return redirect(url_for("face_auth"))
+
+        try:
+            user = get_user_by_id(uid)
+
+            if not user or not user.get("id_photo_path"):
+                flash("ID photo not found. Please contact support.", "danger")
+                return redirect(url_for("login"))
+
+            # ---------------- BASE64 → IMAGE ----------------
+            img_data = captured_image.split(",")[1]
+            decoded_img = base64.b64decode(img_data)
+
+            img = Image.open(BytesIO(decoded_img))
+            img = img.convert("RGB")
+            img = img.resize((640, 640))   # ✅ IMPORTANT
+
+            # ---------------- SAVE SELFIE ----------------
+            sf_dir = os.path.join(app.config["UPLOAD_FOLDER"], "selfies")
+            os.makedirs(sf_dir, exist_ok=True)
+
+            filename = secure_filename(f"{int(time.time())}_selfie.jpg")
+            sf_path = os.path.join(sf_dir, filename)
+
+            img.save(sf_path, "JPEG", quality=85)
+
+            # ---------------- FIX STORED PATH ----------------
+            stored_path = os.path.join(
+                app.config["UPLOAD_FOLDER"],
+                user["id_photo_path"].replace("\\", "/")
+            )
+
+            print("ID photo:", stored_path)
+            print("Selfie:", sf_path)
+
+            if not os.path.exists(stored_path):
+                flash("Stored ID image missing.", "danger")
+                return redirect(url_for("login"))
+
+            # ---------------- FACE COMPARE (SAFE) ----------------
             try:
-                user = get_user_by_id(uid)
-
-                if not user or not user.get("id_photo_path"):
-                    flash("ID photo not found. Please contact support.", "danger")
-                    return redirect(url_for("login"))
-
-                img_data = captured_image.split(",")[1]
-                decoded_img = base64.b64decode(img_data)
-
-                img = Image.open(BytesIO(decoded_img))
-
-                # Resize + compress to avoid Request Entity Too Large
-                img = img.resize((480, 360))
-                sf_dir = os.path.join(app.config["UPLOAD_FOLDER"], "selfies")
-                os.makedirs(sf_dir, exist_ok=True)
-
-                filename = secure_filename(f"{int(time.time())}_selfie.jpg")
-                sf_path = os.path.join(sf_dir, filename)
-
-                img.save(sf_path, "JPEG", quality=60)
-
-                stored_path = os.path.join(app.config["UPLOAD_FOLDER"], user["id_photo_path"])
-
                 result = face_verifier.compare(stored_path, sf_path)
+            except Exception as fe:
+                print("🔥 Face model error:", fe)
+                flash("Face detection failed. Ensure your face is clearly visible.", "danger")
+                return redirect(url_for("face_auth"))
 
-                if result.get("match"):
-                    session["user_id"] = uid
-                    session["face_verified"] = True
-                    session.pop("pending_user_id", None)
+            if not result or result.get("error"):
+                flash("No face detected. Try again in good lighting.", "warning")
+                return redirect(url_for("face_auth"))
 
-                    flash("✅ Face verification successful!", "success")
-                    return redirect(url_for("dashboard"))
+            if result.get("match"):
+                session["user_id"] = uid
+                session["face_verified"] = True
+                session.pop("pending_user_id", None)
 
-                flash("❌ Face mismatch. Try again.", "danger")
+                flash("✅ Face verification successful!", "success")
+                return redirect(url_for("dashboard"))
 
-            except Exception as e:
-                print("Face Auth Error:", e)
-                flash("Error processing image. Try again.", "danger")
+            flash("❌ Face mismatch. Try again.", "danger")
+
+        except Exception as e:
+            print("🔥 Face Auth Fatal Error:", e)
+            flash("Unexpected error during face verification.", "danger")
 
     return render_template("auth_face.html", result=result)
 
@@ -476,21 +528,28 @@ def logout():
 def policies():
     uid = session["user_id"]
     user = get_user_by_id(uid)
+
     if not user:
         flash("User not found.", "danger")
         return redirect(url_for("logout"))
 
+    # -----------------------------
     # User features with defaults
-    age = user.get("age", 30)
-    annual_income = user.get("annual_income", 500_000)
+    # -----------------------------
+    age = int(user.get("age", 30))
+    annual_income = int(user.get("annual_income", 0))  # IMPORTANT
 
+    # -----------------------------
     # User's existing policies
+    # -----------------------------
     existing_policies = get_user_policies(uid) or []
     existing_policy_ids = [
         str(p.get("policy_id")) for p in existing_policies if p.get("policy_id")
     ]
 
-    # Compute total premium (optional)
+    # -----------------------------
+    # Compute total premium
+    # -----------------------------
     total_premium = 0.0
     if existing_policy_ids:
         try:
@@ -500,7 +559,9 @@ def policies():
         except Exception:
             total_premium = 0.0
 
+    # -----------------------------
     # Get recommended policies
+    # -----------------------------
     recommended = recommend_policies(
         age=age,
         annual_income=annual_income,
@@ -508,15 +569,31 @@ def policies():
         existing_policy_count=len(existing_policy_ids)
     ) or []
 
+    # -----------------------------
     # Fetch all policies
+    # -----------------------------
     all_policies = list(policies_col.find())
 
-    # Map policy names to DB documents
-    name_to_doc = { (p.get("name") or "").strip().lower(): p for p in all_policies }
+    # 🔥 FIX: Normalize income fields to avoid NoneType errors
+    for p in all_policies:
+        p["min_income"] = int(p.get("min_income") or 0)
+        p["max_income"] = int(p.get("max_income") or 10**9)
+        p["premium_amount"] = float(p.get("premium_amount") or 0)
 
+    # -----------------------------
+    # Map policy names to DB docs
+    # -----------------------------
+    name_to_doc = {
+        (p.get("name") or "").strip().lower(): p
+        for p in all_policies
+    }
+
+    # -----------------------------
     # Map recommender output to DB _id and score
+    # -----------------------------
     recommended_ids = []
     scores = {}
+
     for r in recommended:
         rec_name = (r.get("name") or "").strip().lower()
         matched = name_to_doc.get(rec_name)
@@ -525,7 +602,9 @@ def policies():
             recommended_ids.append(pid)
             scores[pid] = float(r.get("score", 0))
 
-    # Sort policies: Owned+Recommended > Recommended > Remaining
+    # -----------------------------
+    # Sort policies
+    # -----------------------------
     def sort_key(p):
         pid = str(p["_id"])
         if pid in existing_policy_ids and pid in recommended_ids:
@@ -537,12 +616,16 @@ def policies():
 
     all_policies.sort(key=sort_key)
 
+    # -----------------------------
+    # Render
+    # -----------------------------
     return render_template(
         "policies.html",
         policies=all_policies,
         recommended_ids=recommended_ids,
         scores=scores,
-        existing_policy_ids=existing_policy_ids
+        existing_policy_ids=existing_policy_ids,
+        user=user   # ✅ REQUIRED for income==0 UI logic
     )
 
 # ============================================================
@@ -551,6 +634,15 @@ def policies():
 @app.route("/apply/<pid>", methods=["GET", "POST"])
 @login_required
 def apply_policy(pid):
+
+    # 🔹 Fetch logged-in user
+    user = get_user_by_id(session["user_id"])
+
+    # 🔹 Block application if income is 0
+    if user.get("annual_income", 0) == 0:
+        flash("⚠ You cannot apply for policies with zero income.", "warning")
+        return redirect(url_for("policies"))
+
     policy = get_policy_by_id(pid)
     if not policy:
         abort(404)
@@ -577,13 +669,11 @@ def apply_policy(pid):
         "family_details": "Family Member Details"
     }
 
-    # ✅ Required document KEYS
     required_fields = CATEGORY_REQUIREMENTS.get(
         policy.get("category", "General"),
         ["aadhar_card", "pan_card"]
     )
 
-    # ✅ Pass KEY → LABEL mapping to template
     requirements = {
         field: REQUIREMENT_LABELS[field]
         for field in required_fields
@@ -591,9 +681,6 @@ def apply_policy(pid):
 
     if request.method == "POST":
 
-        # -----------------------------
-        # 1️⃣ Collect user-entered data
-        # -----------------------------
         form_data = {
             "name": request.form.get("name", "").strip(),
             "dob": request.form.get("dob", "").strip(),
@@ -603,16 +690,21 @@ def apply_policy(pid):
             "address": request.form.get("address", "").strip()
         }
 
-        # -----------------------------
-        # 2️⃣ Save uploaded documents
-        # -----------------------------
         uploaded_docs = {}
-        doc_dir = os.path.join(
-            app.config["UPLOAD_FOLDER"],
+
+        # ✅ RELATIVE PATH (stored in DB)
+        relative_dir = os.path.join(
             "documents",
             str(session["user_id"])
         )
-        os.makedirs(doc_dir, exist_ok=True)
+
+        # ✅ ABSOLUTE PATH (actual disk location)
+        absolute_dir = os.path.join(
+            app.config["UPLOAD_FOLDER"],
+            relative_dir
+        )
+
+        os.makedirs(absolute_dir, exist_ok=True)
 
         for field in required_fields:
             file = request.files.get(field)
@@ -622,32 +714,35 @@ def apply_policy(pid):
                 return redirect(request.url)
 
             filename = secure_filename(f"{int(time.time())}_{file.filename}")
-            fpath = os.path.join(doc_dir, filename)
-            file.save(fpath)
 
-            uploaded_docs[field] = fpath
+            # 🔹 Paths
+            relative_path = os.path.join(relative_dir, filename)
+            absolute_path = os.path.join(app.config["UPLOAD_FOLDER"], relative_path)
 
-        # -----------------------------
-        # 3️⃣ OCR / Document Verification
-        # -----------------------------
+            file.save(absolute_path)
+
+            # ✅ STORE RELATIVE PATH ONLY
+            uploaded_docs[field] = os.path.join(
+    "documents",
+    str(session["user_id"]),
+    filename
+)
+
+
         validation_data = {
             "name": form_data["name"],
             "dob": form_data["dob"],
             "gender": form_data["gender"]
         }
 
-        # ✅ Use Aadhaar as primary verification
         primary_doc_key = "aadhar_card"
         result = doc_verifier.validate(
-            uploaded_docs[primary_doc_key],
+            os.path.join(app.config["UPLOAD_FOLDER"], uploaded_docs[primary_doc_key]),
             validation_data
         )
 
         valid = bool(result.get("is_valid"))
 
-        # -----------------------------
-        # 4️⃣ Save policy assignment
-        # -----------------------------
         assign_policy_to_user(
             user_id=session["user_id"],
             policy_id=pid,
@@ -666,8 +761,9 @@ def apply_policy(pid):
     return render_template(
         "apply_policy.html",
         policy=policy,
-        requirements=requirements,   # ✅ dictionary
-        result=result
+        requirements=requirements,
+        result=result,
+        user=user
     )
 
 # ============================================================
@@ -752,41 +848,48 @@ def dashboard():
 @app.route("/claim/apply/<policy_id>", methods=["GET", "POST"])
 @login_required
 def apply_claim(policy_id):
+
     policy = get_policy_by_id(policy_id)
     if not policy:
         abort(404)
 
     claim_type = request.args.get("type", "vehicle")
+    stage = None
     report = None
+    files = []   # ✅ SAFE DEFAULT
 
     if request.method == "POST":
         claim_type = request.form.get("claim_type")
+        stage = request.form.get("stage")
 
         # =====================================================
         # 🚗 VEHICLE CLAIM
         # =====================================================
         if claim_type == "vehicle":
-            stage = request.form.get("stage")
 
-            # ---------- STAGE 1: ESTIMATE ----------
+            # ---------- STAGE 1: DAMAGE ESTIMATION ----------
             if stage == "estimate":
                 files = request.files.getlist("claim_files")
 
                 if not files or not files[0].filename:
-                    flash("Please upload at least one damage image.", "warning")
+                    flash("Please upload at least one vehicle damage image.", "warning")
                     return redirect(request.url)
+
+                # ❌ Block PDFs
+                for f in files:
+                    if f.filename.lower().endswith(".pdf"):
+                        flash("Vehicle claims cannot include PDFs.", "danger")
+                        return redirect(request.url)
 
                 image_paths = []
                 c_dir = os.path.join(app.config["UPLOAD_FOLDER"], "claims")
                 os.makedirs(c_dir, exist_ok=True)
 
                 for f in files:
-                    path = os.path.join(
-                        c_dir,
-                        secure_filename(f"{int(time.time())}_{f.filename}")
-                    )
-                    f.save(path)
-                    image_paths.append(path)
+                    filename = secure_filename(f"{int(time.time())}_{f.filename}")
+                    abs_path = os.path.join(c_dir, filename)
+                    f.save(abs_path)
+                    image_paths.append(abs_path)
 
                 report = claims_ai.evaluate_vehicle_damage(
                     image_paths=image_paths,
@@ -801,16 +904,21 @@ def apply_claim(policy_id):
                 report = claims_ai.evaluate_bargain(ai_estimate, claim_amount)
 
                 add_claim(
-                    session["user_id"],
-                    policy_id,
-                    claim_amount,
+                    user_id=session["user_id"],
+                    policy_id=policy_id,
+                    amount=claim_amount,
                     status="pending",
-                    risk_score=report["risk_score"],
-                    decision=report["decision"],
+                    risk_score=report.get("risk_score"),
+                    decision=report.get("decision"),
                     claim_type="vehicle"
                 )
 
-                flash("Vehicle claim submitted successfully.", "success")
+                flash("🚗 Vehicle claim submitted successfully.", "success")
+                return redirect(url_for("dashboard"))
+
+            else:
+                flash("Invalid vehicle claim stage.", "danger")
+                return redirect(request.url)
 
         # =====================================================
         # 📄 DOCUMENT CLAIM
@@ -819,24 +927,27 @@ def apply_claim(policy_id):
             files = request.files.getlist("claim_files")
             claim_amount = float(request.form.get("claim_amount", 0))
 
-            if not files:
+            if not files or not files[0].filename:
                 flash("Please upload claim documents.", "warning")
                 return redirect(request.url)
 
-            file_paths = []
+            abs_paths = []     # for AI
+            rel_paths = []     # for DB + admin
+
             c_dir = os.path.join(app.config["UPLOAD_FOLDER"], "claims")
             os.makedirs(c_dir, exist_ok=True)
 
             for f in files:
-                path = os.path.join(
-                    c_dir,
-                    secure_filename(f"{int(time.time())}_{f.filename}")
-                )
-                f.save(path)
-                file_paths.append(path)
+                filename = secure_filename(f"{int(time.time())}_{f.filename}")
+                rel_path = f"claims/{filename}"
+                abs_path = os.path.join(app.config["UPLOAD_FOLDER"], rel_path)
+
+                f.save(abs_path)
+                abs_paths.append(abs_path)
+                rel_paths.append(rel_path)
 
             report = claims_ai.evaluate(
-                files=file_paths,
+                files=abs_paths,
                 metadata={
                     "claim_amount": claim_amount,
                     "policy_sum_insured": policy.get("sum_insured", 100000)
@@ -844,16 +955,22 @@ def apply_claim(policy_id):
             )
 
             add_claim(
-                session["user_id"],
-                policy_id,
-                claim_amount,
+                user_id=session["user_id"],
+                policy_id=policy_id,
+                amount=claim_amount,
                 status="pending",
-                risk_score=report["risk_score"],
-                decision=report["decision"],
-                claim_type="document"
+                risk_score=report.get("risk_score"),
+                decision=report.get("decision"),
+                claim_type="document",
+                uploaded_docs=rel_paths   # ✅ ADMIN CAN VIEW
             )
 
-            flash("Document claim submitted successfully.", "success")
+            flash("📄 Document claim submitted. Review in progress.", "success")
+            return redirect(url_for("dashboard"))
+
+        else:
+            flash("Invalid claim type.", "danger")
+            return redirect(request.url)
 
     return render_template(
         "apply_claim.html",
@@ -882,49 +999,46 @@ def profile():
 @login_required
 def edit_profile():
     uid = session["user_id"]
+
+    name = request.form.get("name")
+    email = request.form.get("email")
+    phone = request.form.get("phone")
+    address = request.form.get("address")
+    annual_income = request.form.get("annual_income")
+
+    update_data = {
+        "name": name,
+        "email": email,
+        "phone": phone,
+        "address": address,
+        "annual_income": int(annual_income or 0)  # ✅ SAFE
+    }
+
+    # Handle ID photo upload (unchanged logic)
+    file = request.files.get("id_photo")
+    if file and file.filename:
+        filename = secure_filename(file.filename)
+        path = os.path.join("id_photos", f"{uid}_{filename}")
+        file.save(os.path.join(app.config["UPLOAD_FOLDER"], path))
+        update_data["id_photo_path"] = path
+
+    users_col.update_one(
+        {"_id": ObjectId(uid)},
+        {"$set": update_data}
+    )
+
     user = get_user_by_id(uid)
-    if not user:
-        return jsonify({"status": "error", "message": "User not found"}), 404
-
-    # Form data
-    name = request.form.get("name", "").strip()
-    email = request.form.get("email", "").strip().lower()
-    phone = request.form.get("phone", "").strip() or None
-    address = request.form.get("address", "").strip() or None
-    id_photo = request.files.get("id_photo")
-
-    # Check for duplicate email
-    existing_user = users_col.find_one({"email": email, "_id": {"$ne": user["_id"]}})
-    if existing_user:
-        return jsonify({"status": "error", "message": "Email already used by another account."})
-
-    update_data = {"name": name, "email": email, "phone": phone, "address": address}
-
-    # Handle ID photo upload
-    if id_photo and id_photo.filename:
-        # Ensure upload directory exists
-        id_dir = os.path.join(app.config["UPLOAD_FOLDER"], "id_photos")
-        os.makedirs(id_dir, exist_ok=True)
-
-        # Use a safe filename and store relative path
-        filename = secure_filename(f"{int(time.time())}_{id_photo.filename}")
-        file_path = os.path.join(id_dir, filename)
-        id_photo.save(file_path)
-        update_data["id_photo_path"] = f"id_photos/{filename}"  # relative path
-
-    # Update DB
-    users_col.update_one({"_id": user["_id"]}, {"$set": update_data})
-    updated_user = get_user_by_id(uid)
 
     return jsonify({
         "status": "success",
         "message": "Profile updated successfully.",
         "user": {
-            "name": updated_user["name"],
-            "email": updated_user["email"],
-            "phone": updated_user.get("phone", ""),
-            "address": updated_user.get("address", ""),
-            "id_photo_path": updated_user.get("id_photo_path", "")
+            "name": user["name"],
+            "email": user["email"],
+            "phone": user.get("phone"),
+            "address": user.get("address"),
+            "annual_income": user.get("annual_income", 0),
+            "id_photo_path": user.get("id_photo_path")
         }
     })
 
@@ -1164,4 +1278,4 @@ def datetimeformat(value, format="%Y-%m-%d %H:%M"):
 # MAIN
 # ============================================================
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run(debug=True, threaded=False) 

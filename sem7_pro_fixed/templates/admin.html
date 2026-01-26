@@ -121,56 +121,41 @@
   </div>
 </div>
 
+
 <!-- ================= CLAIMS TABLE ================= -->
-<div class="card border-0 shadow-sm rounded-3 mt-4">
-  <div class="card-header bg-dark text-white fw-bold">
-    📝 Claims Overview
-  </div>
+<div class="card border-0 shadow-sm mt-4">
+  <div class="card-header bg-dark text-white">📝 Claims Overview</div>
   <div class="card-body table-responsive">
     <table class="table table-hover align-middle">
       <thead>
         <tr>
-          <th>ID</th>
-          <th>Policy</th>
-          <th>Type</th>
-          <th>Amount</th>
-          <th>Risk</th>
-          <th>Decision</th>
-          <th>AI Used</th>
-          <th>Date</th>
+          <th>ID</th><th>Policy</th><th>Type</th>
+          <th>Amount</th><th>Risk</th><th>Decision</th><th>Date</th>
         </tr>
       </thead>
       <tbody>
         {% for c in claims %}
         <tr>
           <td>#{{ c._id }}</td>
-          <td>
-            {{ c.policy.name }}
-            <div class="small text-muted">{{ c.policy.category }}</div>
-          </td>
+          <td>{{ c.policy.name }}</td>
           <td>
             {% if c.claim_type == "vehicle" %}
-              <span class="badge bg-warning text-dark">🚗 Vehicle</span>
+              <span class="badge bg-warning">🚗 Vehicle</span>
             {% else %}
-              <span class="badge bg-secondary">📄 Normal</span>
+              <span class="badge bg-info">📄 Document</span>
             {% endif %}
           </td>
           <td>₹{{ "{:,}".format(c.amount) }}</td>
-          <td>
-            {% if c.risk_score is not none %}
-              {{ (c.risk_score * 100)|round(1) }}%
-            {% else %}—{% endif %}
-          </td>
+          <td>{{ (c.risk_score * 100)|round(1) if c.risk_score else "—" }}%</td>
           <td>
             {% if c.decision == "Auto-Approve" %}
-              <span class="badge bg-success">Auto</span>
+              <span class="badge bg-success">Approved</span>
             {% elif c.decision == "Manual Review" %}
               <span class="badge bg-warning text-dark">Manual</span>
             {% else %}
               <span class="badge bg-danger">Rejected</span>
             {% endif %}
           </td>
-          <td>{{ "YOLO" if c.claim_type == "vehicle" else "Doc-AI" }}</td>
           <td>{{ c.created_at | datetimeformat }}</td>
         </tr>
         {% endfor %}
@@ -189,27 +174,15 @@
     <table class="table table-hover align-middle">
       <thead>
         <tr>
-          <th>User</th>
-          <th>Policy</th>
-          <th>Status</th>
-          <th>Documents</th>
-          <th>Action</th>
+          <th>User</th><th>Policy</th><th>Status</th>
+          <th>Documents</th><th>Action</th>
         </tr>
       </thead>
-
       <tbody>
         {% for up in user_policies %}
         <tr>
-          <td>
-            {{ up.user.name }}
-            <div class="small text-muted">{{ up.user.email }}</div>
-          </td>
-
-          <td>
-            {{ up.policy.name }}
-            <div class="small text-muted">{{ up.policy.category }}</div>
-          </td>
-
+          <td>{{ up.user.name }}</td>
+          <td>{{ up.policy.name }}</td>
           <td>
             {% if up.status == "active" %}
               <span class="badge bg-success">Active</span>
@@ -219,24 +192,48 @@
           </td>
 
           <td>
-            {% if up.doc_valid %}
-              <span class="badge bg-success">✔ Verified</span>
+            {% if up.uploaded_docs %}
+              <button class="btn btn-sm btn-outline-primary"
+                      data-bs-toggle="modal"
+                      data-bs-target="#docsModal{{ up._id }}">
+                📎 View Docs
+              </button>
             {% else %}
-              <span class="badge bg-danger">❌ Mismatch</span>
+              —
             {% endif %}
           </td>
 
           <td>
             {% if not up.doc_valid %}
               <a href="{{ url_for('admin_verify_policy', user_policy_id=up._id|string) }}"
-                 class="btn btn-sm btn-success">
-                Approve
-              </a>
-            {% else %}
-              —
-            {% endif %}
+                 class="btn btn-sm btn-success">Approve</a>
+            {% else %}—{% endif %}
           </td>
         </tr>
+
+        <!-- MODAL -->
+        <div class="modal fade" id="docsModal{{ up._id }}" tabindex="-1">
+          <div class="modal-dialog modal-lg modal-dialog-scrollable">
+            <div class="modal-content">
+              <div class="modal-header">
+                <h5 class="modal-title">📂 Uploaded Documents</h5>
+                <button class="btn-close" data-bs-dismiss="modal"></button>
+              </div>
+              <div class="modal-body">
+                {% for key, path in up.uploaded_docs.items() %}
+                  <div class="d-flex justify-content-between py-2 border-bottom">
+                    <span>{{ key.replace('_',' ').title() }}</span>
+                    <a href="{{ url_for('admin_files', filename=path) }}"
+                       target="_blank"
+                       class="btn btn-sm btn-outline-success">
+                      View
+                    </a>
+                  </div>
+                {% endfor %}
+              </div>
+            </div>
+          </div>
+        </div>
         {% endfor %}
       </tbody>
     </table>
